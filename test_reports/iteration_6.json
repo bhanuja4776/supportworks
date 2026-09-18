@@ -1,0 +1,57 @@
+{
+  "summary": "Iteration 6 fully validated end-to-end. Backend: 16/16 pytest pass (backend_iteration6_test.py). (A) Clients: POST/PATCH/GET/DELETE all persist the new fields (photo_base64, icon, date_of_birth, sex, condition, severity, medications, behaviours) with correct defaults (icon='person', color='#00E5FF', all new strings default ''); DELETE removes and subsequent GET returns 404. (B) Expenses CRUD: POST returns full expense with created_at; GET /api/expenses sorts by due_date ASC verified with 3 seeded records (Early < Mid < Late); PATCH updates cost/direct_debit/category/renewal_date; DELETE removes; PATCH on missing id returns 404. (C) Dashboard: GET /api/dashboard/outstanding returns unpaid invoices enriched with invoice_number, total, sent_date, days_since_sent (int, >=0 after mark-sent), client_name, client_initials (two-token '?TO' verified + fallback '?' when no name), client_color (from client doc + fallback #00E5FF), shift_date, due_date; paid invoices correctly excluded. Regression: invoice totals (3×67.56 → subtotal 202.68/gst 20.27/total 222.95), receipt create+list, dashboard stats shape (12 required keys), and Credentials number field COC-2026-XYZ-9982 persists on POST + list. Frontend (390×844): Command screen — metric-outstanding taps expand outstanding-dropdown showing outstanding-{id} rows with SM initials badge, invoice number, days since sent, shift date, $ owing (screenshots confirm INV-1003 '0d since sent · shift 2026-07-03' and INV-1001 '1d since sent · $222.95 owing'). ministat-expenses tap navigates to /vault (URL confirmed). Vault — Total expenses $42.50, seg-receipts / seg-bills / seg-calendar segments all present and switchable; Bills & Costs empty-state with 'No costs yet' + '+' FAB visible; Calendar renders month grid with Sun-Sat header, legend dots (Receipts/Bill due/Renewal), tapping day shows 'Nothing scheduled on this day'. Clients form (ClientFormSheet) — icon picker (9 icons: icon-person/happy/heart/accessibility/walk/body/medkit/star/paw/home), colour picker (8 swatches: color-#00E5FF etc), Snap/Upload photo (client-photo-camera, client-photo-upload), all care-profile fields present (client-name, client-dob, sex-Male/Female/Other, client-condition, Mild/Moderate/Severe chips, client-medications, client-behaviours, client-ndis/company/email/phone/address/plan-manager, save-client-btn). Credentials — cred-number field present in add form. Only harmless RN-web deprecation warnings observed (shadow*, pointerEvents, Image tintColor) and expo-notifications web limitation — no pageerrors, no red screens.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/dashboard/outstanding", "issue": "days_since_sent uses today.date() minus sent_date; if sent_date is somehow in the future (e.g. clock skew or manual edit) the value would be negative. Consider max(0, delta) or return null for future dates."},
+      {"endpoint": "PATCH /api/expenses/{id}", "issue": "Body is accepted as raw dict without any Pydantic validation — a client could set arbitrary keys (e.g. injected 'foo': 'bar') and they'll be stored. Non-blocking (single-user mode) but consider ExpensePatch model to whitelist keys."},
+      {"endpoint": "DELETE /api/clients/{id} & /api/expenses/{id}", "issue": "Returns {success: true} even when the id doesn't exist (no 404). Non-blocking; consistent with other resources but arguably incorrect."},
+      {"endpoint": "GET /api/dashboard/outstanding", "issue": "Loads ALL clients (up to 2000) and ALL shifts (up to 2000) into memory on every call to build lookup dicts. Fine at current scale; consider $lookup or targeted queries only for the client_ids/shift_ids that actually appear in unpaid invoices when data grows."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/vault (Bills & Costs empty)", "issues": ["Empty state 'No costs yet. Add bills, direct debits & subscriptions.' is clear but the FAB (+) doesn't have an obvious testID discoverable via 'fab/add/expense/bill/cost' search. Consider adding testID='add-expense-fab' for reliable automation."]},
+      {"screen": "/ (Command) — outstanding dropdown", "issues": ["Row shows '0d since sent · shift 2026-07-03' and '$0.00 owing' for INV-1003 (draft-like unpaid) — an amount of $0.00 owing is a bit noisy in the dropdown. Consider hiding rows where total==0, or showing 'draft' badge instead."]},
+      {"screen": "ClientFormSheet — severity chips", "issues": ["Severity chips (Mild/Moderate/Severe) do not carry an obvious testID matching 'sev-*' pattern (couldn't find sev-Mild / sev-Moderate / sev-Severe). They render fine visually but hard to target in tests — add testID='sev-Mild' etc for stability."]}
+    ],
+    "react_native_issues": [
+      {"component": "RN Web (global)", "issue": "'shadow*' style props are deprecated. Use 'boxShadow'. Non-blocking, carried from prior iterations."},
+      {"component": "RN Web (global)", "issue": "'props.pointerEvents is deprecated. Use style.pointerEvents.' Non-blocking, carried from prior iterations."},
+      {"component": "expo-image / calendar icon", "issue": "'Image: style.tintColor is deprecated. Please use props.tintColor.' Appears when navigating into the Vault Calendar segment (react-native-calendars renders an <Image> with tintColor in style). Non-blocking — likely inside the third-party library."},
+      {"component": "expo-notifications (web)", "issue": "'[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.' Web-preview only limitation; harmless on native builds."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration6_test.py",
+    "/app/test_reports/pytest/iteration6_results.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have) Add testID='add-expense-fab' to the Vault FAB and testID='sev-Mild' | 'sev-Moderate' | 'sev-Severe' to the severity chips in ClientFormSheet — makes future automation more reliable.",
+    "(Optional) In /api/dashboard/outstanding, clamp days_since_sent to max(0, delta) or return null if sent_date is in the future.",
+    "(Optional) Consider hiding zero-total unpaid invoices from the Outstanding dropdown, or badge them as 'draft' — INV-1003 currently shows '$0.00 owing' which is visually noisy.",
+    "(Optional) Introduce an ExpensePatch Pydantic model for PATCH /api/expenses/{id} to whitelist mutable keys instead of accepting raw dict.",
+    "(Optional cleanup carried from iter-5) The NDIS_CODES module-level constant at server.py:183-194 is still dead code; safe to remove."
+  ],
+  "critical_code_review_comments": [
+    "server.py — ClientCreate/Client models correctly include all new profile fields with sensible defaults; PATCH /clients/{id} strips 'id'/'_id' before $set which prevents accidental primary-key mutation.",
+    "server.py — Expense/ExpenseCreate models are clean; POST /expenses uses model_dump(exclude={'id'}) to avoid leaking None id into Mongo. List endpoint sorts by due_date ASC — correct for a 'what's coming up' list.",
+    "server.py — /api/dashboard/outstanding correctly filters by status:'unpaid', enriches with client_name/initials/color from the clients collection, and derives shift_date from shifts.started_at[:10]. Fallback client_color='#00E5FF' matches the client Model default so the UI stays consistent.",
+    "frontend/app/(tabs)/clients.tsx — long-press opens Alert with Open profile / Edit / Delete; short-press navigates; menu ellipsis also triggers openActions. ClientFormSheet passed initial={editing} for edit mode. Age is derived client-side via ageFromDob() and rendered in the subtitle.",
+    "frontend/app/client/[id].tsx — Care Profile section only renders when at least one field is set (guards on condition/severity/medications/behaviours), preventing an empty section for legacy clients. Severity pill colour maps Severe→error / Moderate→warning / Mild→success. Header has edit-client-btn and delete-client-btn with proper Alert-based delete confirmation that router.back()s on success.",
+    "frontend/app/vault.tsx (implied) — segment toggle testIDs seg-receipts/seg-bills/seg-calendar all present and functional; Calendar uses react-native-calendars with dot legend for receipts/bills/renewals. Confirmed working on 390×844 web preview.",
+    "frontend/app/(tabs)/index.tsx — metric-outstanding is a Pressable that toggles outstanding-dropdown; each row uses outstanding-{id} testID with initials avatar, invoice number/name, days_since_sent, shift date, and amount owing. ministat-expenses is a Pressable that router.push('/vault'). Confirmed via live navigation.",
+    "PATCH /clients & /expenses & /credentials do not use try/except around ObjectId(id) — malformed 24-hex IDs still yield 500. Carried from prior iterations, non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration6_test.py (new; 16 tests across TestClientExtendedFields, TestExpensesCRUD, TestDashboardOutstanding, TestCredentialsNumber, TestRegression)"
+  ],
+  "success_rate": {"backend": "100% (16/16 iter-6)", "frontend": "100% on all critical iter-6 flows verified on 390×844 web preview"},
+  "seed_data_creation": "Iter-6 pytest fixtures create and clean up: TEST_I6_ClientFull (delete), TEST_I6_ClientPatch (delete), TEST_I6_ClientDelete, TEST_I6_ClientBare, 3× TEST_I6_Exp_* + Exp_Patch + Exp_Del, TestI6 Outstanding + linked invoice, TEST_I6_PaidClient + invoice, empty-client + no-client invoice for initials, TEST_I6_PL_Cert credential, TEST_I6_Reg invoice, TEST_I6_Merchant receipt. All deleted in try/finally. No residual test data expected.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run iter-6 backend tests: `export $(grep -v '^#' /app/frontend/.env | xargs) && pytest /app/backend/tests/backend_iteration6_test.py -v`. Base URL from EXPO_PUBLIC_BACKEND_URL. Key new testIDs verified on frontend: metric-outstanding, outstanding-dropdown, outstanding-{invoice_id}, ministat-expenses, seg-receipts, seg-bills, seg-calendar, cred-number, client-photo-camera, client-photo-upload, icon-{name} (person/happy/heart/accessibility/walk/body/medkit/star/paw/home), color-{hex} (8 swatches), client-name, client-dob, sex-{Male|Female|Other}, client-condition, client-medications, client-behaviours, save-client-btn, edit-client-btn, delete-client-btn. Initials logic: takes first char of up to first 2 whitespace-tokens of name (uppercase); '?' if empty. Client_color fallback is #00E5FF. Vault FAB and severity chips currently lack explicit testIDs — see action_items.",
+  "rca_of_issue": "N/A — no defects found in iteration 6. All A/B/C features work as specified and no regression detected in invoices/receipts/stats/credentials."
+}

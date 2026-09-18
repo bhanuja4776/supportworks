@@ -1,0 +1,42 @@
+{
+  "summary": "Frontend-only i18n verification for the 4 newly-translated screens (Settings/Business Profile, Membership, Vault/Expenses, Credentials/Certs & Insurance). Runtime browser test on the public Expo web preview at 390x844 mobile viewport, logged in as TEST_DEMO_EMAIL. All four screens loaded via [data-testid='settings-screen' | 'membership-screen' | 'receipts-screen' | 'credentials-screen'] with ZERO unresolved i18n keys (no 'settings.*/membership.*/vault.*/credentials.*' literal leaks in rendered DOM). English keywords match spec: 'Business Profile', 'LOGO', 'ACCENT COLOUR', 'INVOICE STYLE', 'DETAILS', 'Save Profile' on Settings; 'CHOOSE YOUR PLAN', 'Pro Monthly $19.99/month', 'BEST VALUE · SAVE 17%', 'Pro Yearly $199/year', 'Start 14-day trial' on Membership; 'Receipts / Bills & Costs / Calendar' segments switch correctly, 'Nothing scheduled' calendar empty state, 'Add Cost' modal with 'Direct debit'/'Due / debit date'/'Renewal / expiry'/'Save Cost' on Vault; 'Certs & Insurance' header, empty state 'No documents yet. Tap + to add one', 'Add Document' modal with 'Certificate/Insurance/License' chips + 'Photo/Gallery/PDF / File' + 'Save Document' on Credentials. save-settings-btn press did not crash. Locale key coverage: en.json contains settings(35), membership(31), vault(38), credentials(22) — every key referenced from the 4 tsx files exists in en.json (spot-verified). No red-screen errors, no runtime crashes.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "i18n_verification": {
+    "screens_tested": ["settings", "membership", "vault", "credentials"],
+    "locale": "en",
+    "unresolved_key_leaks": 0,
+    "leak_pattern_checked": "(settings|membership|vault|credentials)\\.[a-zA-Z0-9]+",
+    "screens": {
+      "settings": {"testid": "settings-screen", "loaded": true, "save_btn_visible": true, "save_press_no_crash": true, "keywords_found": ["Business Profile","LOGO","ACCENT","INVOICE STYLE","DETAILS","Save Profile","Upload"]},
+      "membership": {"testid": "membership-screen", "loaded": true, "keywords_found": ["CHOOSE YOUR PLAN","Pro","BEST VALUE","/month","/year","Start","Trial"], "interpolation_verified": ["Start 14-day trial (days=14)"]},
+      "vault": {"testid": "receipts-screen", "loaded": true, "segments_switchable": ["seg-receipts","seg-bills","seg-calendar"], "add_expense_fab_visible": true, "modal_keywords_found": ["Add cost","Direct debit"], "calendar_keywords_found": ["Bill due","Renewal","Nothing scheduled"]},
+      "credentials": {"testid": "credentials-screen", "loaded": true, "add_credential_btn": true, "save_credential_btn_visible": true, "modal_keywords_found": ["Certificate","Insurance","License","Save Document","Gallery","PDF"], "empty_state_ok": true}
+    },
+    "key_coverage_en_json": {"settings": 35, "membership": 31, "vault": 38, "credentials": 22},
+    "tamil_gap": "Expected per handoff: ta.json is missing settings/membership/vault/credentials sections and falls back to en. NOT a bug."
+  },
+  "test_report_links": ["/app/test_reports/iteration_18.json"],
+  "action_items": [
+    "OPTIONAL: The confirm(t('settings.saved')) success toast is transient (Celebration overlay) so the automated 'saved' text check didn't catch it — save-settings-btn press does not crash the app, but E1 may consider a longer-lived / testable toast (e.g. testID='save-success-toast') for future automated verification. Not user-facing.",
+    "OPTIONAL (unchanged from prior iterations): three RN-web deprecation warnings still logged during navigation ('shadow*' style props, props.pointerEvents, Image.style.tintColor). Cosmetic; no functional impact. Consider migrating to boxShadow / style.pointerEvents / props.tintColor when convenient."
+  ],
+  "critical_code_review_comments": [
+    "settings.tsx, membership.tsx, vault.tsx, credentials.tsx: every user-facing string (headers, section labels, field labels, placeholders, buttons, toasts, alerts, modal titles) is routed through useTranslation()/t(). No hard-coded English literals remain in the four in-scope files.",
+    "Interpolation used in the wild is correctly wired: settings.updated {{count}}, membership.startTrial/startTrialMeta {{days}}, membership.cancels/renews {{date}}, vault.due/renews {{date}}, credentials.expiresIn {{days}}, credentials.validExp {{date}}, credentials.certNo {{n}} — all present in en.json.",
+    "Dynamic keys via template strings (e.g. t(`settings.${s.key}Desc`), t(`settings.${f.tk}`), t(`membership.${fk}`), t(`credentials.${ty.toLowerCase()}`)) are safe — every constant array value has a matching en.json entry (STYLES→modern/classic/minimal + *Desc, FIELDS→fBusinessName/fAbn/fEmail/fPhone/fAddress/fBank/fBsb/fAccount, FEATURE_KEYS→feat1..feat5, TYPES→certificate/insurance/license).",
+    "credentials.tsx line 67, 82, 93: three Alert.alert() error paths still use hard-coded English (\"Couldn't attach file\", \"Cannot open document\", \"Couldn't save document\", \"Something went wrong. Please try again.\"). These are edge-case error alerts; low priority but worth i18n-ing for full coverage.",
+    "vault.tsx line 248: 'DD' abbreviation for direct debit is a hard-coded literal in the bill tag; consider t('vault.ddShort') if any locale prefers a different abbreviation. Also low priority."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped_per_request", "frontend": "100% for all 6 in-scope test items (login, Settings render+save, Membership render, Vault segments+modal, Credentials render+modal, no i18n leaks)."},
+  "seed_data_creation": "None. Save Profile pressed once on TEST_DEMO_EMAIL with existing business_name value; no new data created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The 4 in-scope screens (settings, membership, vault, credentials) are fully i18n-wired in English with zero missing keys. If retesting in a non-English locale, note that Tamil (ta) is intentionally not yet translated for these 4 sections and will fall back to en — this is expected per the handoff and NOT a bug. For runtime i18n leak detection, grep the rendered body for the regex '(settings|membership|vault|credentials)\\.[a-zA-Z0-9]+' — any hit indicates a missing key. Three hard-coded English Alert.alert() strings remain in credentials.tsx (lines 67/82/93) — cosmetic, edge-case only."
+}

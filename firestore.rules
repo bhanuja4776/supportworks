@@ -1,0 +1,166 @@
+rules_version = '2';
+
+// Every document is owned by exactly one signed-in user (ownerId ==
+// request.auth.uid) — see the plan doc for why this collapses the old
+// Mongo org_id multi-tenancy down to direct uid ownership. Dev-friendly
+// starting point: gate on ownership everywhere, no field-level validation
+// yet — tighten (schema validation, App Check, rate limiting) before real
+// client data lives here.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(ownerId) {
+      return signedIn() && request.auth.uid == ownerId;
+    }
+    // An update must never be able to reassign a document's ownerId to a
+    // different uid — without this, a user could updateDoc() their own
+    // document's ownerId field to someone else's uid, handing it to that
+    // other account (the document itself, and any Storage files it
+    // references by id, would then appear inside their data).
+    function ownerUnchanged() {
+      return request.resource.data.ownerId == resource.data.ownerId;
+    }
+
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /dailyNotes/{date} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // Written only by the consumeAi() Cloud Function (Admin SDK, bypasses
+      // rules) when it counts an AI call against the free-tier limit — a
+      // client that could write its own count could zero it out and bypass
+      // the limit entirely, so only reads are allowed here directly.
+      match /aiUsage/{month} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+    }
+
+    // Stripe checkout/payment records — written only by the billing Cloud
+    // Functions (Admin SDK, bypasses rules); never read or written directly
+    // by any client.
+    match /paymentTransactions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /clients/{clientId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+
+      match /notes/{noteId} {
+        allow read, write: if isOwner(get(/databases/$(database)/documents/clients/$(clientId)).data.ownerId);
+      }
+      match /activityTemplates/{templateId} {
+        allow read, write: if isOwner(get(/databases/$(database)/documents/clients/$(clientId)).data.ownerId);
+      }
+    }
+
+    // Top-level (not a clients/ subcollection) because the UI addresses a
+    // reminder by its own id alone (update/delete take no clientId) —
+    // matches the original Mongo model, where reminders carry a client_id
+    // field rather than living under a client document.
+    match /reminders/{reminderId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    // An invoice's client_id must belong to the same owner — enforced here
+    // (not just in application code) so a request that talks to Firestore
+    // directly still can't forge an invoice against another user's client.
+    function referencesOwnClient(data) {
+      return data.client_id == ""
+        || get(/databases/$(database)/documents/clients/$(data.client_id)).data.ownerId == request.auth.uid;
+    }
+    match /invoices/{invoiceId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow create: if isOwner(request.resource.data.ownerId) && referencesOwnClient(request.resource.data);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged() && referencesOwnClient(request.resource.data);
+    }
+
+    match /receipts/{receiptId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /expenses/{expenseId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /tasks/{taskId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /shifts/{shiftId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /shiftTemplates/{templateId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /credentials/{credentialId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /bankTransactions/{txnId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /clientDocuments/{docId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /textDocuments/{docId} {
+      allow read, delete: if isOwner(resource.data.ownerId);
+      allow update: if isOwner(resource.data.ownerId) && ownerUnchanged();
+      allow create: if isOwner(request.resource.data.ownerId);
+    }
+
+    match /settings/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // Only ever read/written inside a runTransaction by the signed-in
+    // owner when minting the next invoice number. Ownership alone isn't
+    // enough here — a plain isOwner(uid) write would let a client set
+    // lastInvoiceNumber to anything, including backwards, which could
+    // reproduce an invoice number already issued. So writes are further
+    // constrained to the shape a legitimate mint can produce: a single
+    // integer field that only ever increases. The doc can never be
+    // deleted (that would silently reset numbering back to 1001).
+    match /counters/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(["lastInvoiceNumber"])
+        && request.resource.data.lastInvoiceNumber is int
+        && request.resource.data.lastInvoiceNumber > 1000;
+      allow update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(["lastInvoiceNumber"])
+        && request.resource.data.lastInvoiceNumber is int
+        && request.resource.data.lastInvoiceNumber > resource.data.lastInvoiceNumber;
+      allow delete: if false;
+    }
+  }
+}

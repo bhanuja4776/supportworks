@@ -1,0 +1,149 @@
+{
+  "app_name": "NDIS Command Center",
+  "personality": "7 Dark-First Utility structure with 6 Glass / Luxe surfaces",
+  "personality_one_liner": "A futuristic, dopamine-driven command center for NDIS support workers, combining medical-blue authority with high-clarity tech UI.",
+  "color": {
+    "surface": "#041014",
+    "onSurface": "#F0F9FF",
+    "surfaceSecondary": "#0A1E24",
+    "onSurfaceSecondary": "#E0F2FE",
+    "surfaceTertiary": "#112F38",
+    "onSurfaceTertiary": "#BAE6FD",
+    "surfaceInverse": "#E0F2FE",
+    "onSurfaceInverse": "#041014",
+    "brand": "#00E5FF",
+    "brandPrimary": "#00E5FF",
+    "onBrandPrimary": "#001D23",
+    "brandSecondary": "#3B82F6",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#0B303B",
+    "onBrandTertiary": "#38BDF8",
+    "success": "#34D399",
+    "onSuccess": "#022C22",
+    "warning": "#FBBF24",
+    "onWarning": "#451A03",
+    "error": "#F87171",
+    "onError": "#450A0A",
+    "info": "#38BDF8",
+    "onInfo": "#082F49",
+    "border": "#1E3A42",
+    "borderStrong": "#2A4D57",
+    "divider": "#112A32"
+  },
+  "typography": {
+    "displayFontFamily": "Space Grotesk",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous spacing for clear grouping. Cards never flush to edge, minimum md margin.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Bottom tab bar when content scrolls behind",
+      "Sticky headers over scrolling content",
+      "Featured dashboard metric cards over the dark cyan background",
+      "Bottom-sheet extraction confidence checks"
+    ],
+    "dont's": [
+      "Every single list row",
+      "Form input fields",
+      "Body text regions"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "haptics": {
+    "events": {
+      "task_complete": "success",
+      "invoice_paid": "success",
+      "scan_capture": "medium",
+      "voice_record_start": "light",
+      "voice_record_stop": "medium",
+      "tab_press": "light"
+    }
+  },
+  "screens": [
+    {
+      "name": "Dashboard",
+      "purpose": "A high-clarity command center offering top-left priority statistics, Z-pattern flow for quick actions, and glancing task planner.",
+      "states": {
+        "loading": "Centered teal spinner with a pulsing glow effect.",
+        "empty": "N/A for dashboard, but sections will show 'No active tasks' with a medical-blue abstract illustration.",
+        "error": "Readable text with a 'Retry Sync' secondary CTA."
+      },
+      "layout": "Hero metric row (Earnings/Tasks) with 24px+ typography. Next row contains quick actions (Scan Receipt, New Invoice). Bottom section contains a timeline feed for the daily planner. Use dark gradient backgrounds with subtle noise texture to elevate the futuristic feel."
+    },
+    {
+      "name": "Scanner",
+      "purpose": "AI photo receipt extraction with immediate confidence-check validation.",
+      "states": {
+        "loading": "Simulated 'Scanning...' HUD overlay on the camera feed.",
+        "empty": "Camera viewfinder filling the screen with corner crop guidelines.",
+        "error": "Error modal if document not detected."
+      },
+      "layout": "Full-screen camera view as hero. After snap, use a Gorhom bottom sheet to display extracted data in a readable vertical form. Highlight extracted fields with color-coded confidence indicators (e.g., green for high confidence) and provide an edit button."
+    },
+    {
+      "name": "InvoiceBuilder",
+      "purpose": "Fast invoice creation utilizing voice dictation and NDIS prefill hot-keys.",
+      "states": {
+        "loading": "Skeleton UI mimicking the form structure.",
+        "empty": "Clean blank form with NDIS hot-keys clearly accessible above the keyboard.",
+        "error": "Standard form validation inline."
+      },
+      "layout": "Single column form structure with labels above inputs. Sticky primary CTA 'Generate Invoice' at bottom. Microphone icon inside text areas triggers a glowing cyan border and pulsing animation to indicate listening."
+    }
+  ],
+  "images": {
+    "dashboard_hero_bg": {
+      "url": "https://images.unsplash.com/photo-1709990740078-05aa8ee5b9b7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njd8MHwxfHNlYXJjaHwxfHxkYXJrJTIwYWJzdHJhY3QlMjBmdXR1cmlzdGljJTIwdGVjaCUyMGN5YW58ZW58MHx8fHwxNzgyOTg3NzAzfDA&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1709990740078-05aa8ee5b9b7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njd8MHwxfHNlYXJjaHwxfHxkYXJrJTIwYWJzdHJhY3QlMjBmdXR1cmlzdGljJTIwdGVjaCUyMGN5YW58ZW58MHx8fHwxNzgyOTg3NzAzfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Dark futuristic abstract background with teal glowing curves"
+    },
+    "receipt_scan_placeholder": {
+      "url": "https://images.unsplash.com/photo-1698067942087-53f552fe2f59?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwxfHxibGFuayUyMHBhcGVyJTIwZG9jdW1lbnQlMjByZWNlaXB0JTIwc2NhbnxlbnwwfHx8fDE3ODIxMTM4MTl8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Blank piece of paper to demonstrate scanning area"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the dark-first utility palette with electric cyan accents. This explicitly satisfies the user's request for a 'deep teal/medical-blue with cyan accents' command-center aesthetic, bypassing the general ban on blue for this specific case.",
+    "Implement the 'Voice Input' visual feedback clearly: when dictation is active, change the text area's border to `brandPrimary` (cyan) and add an opacity pulse animation.",
+    "Implement 'Dopamine Moments' for task completions and invoice payments using Reanimated. Examples: a brief, bright cyan glow over the success card, scaling up slightly (1.02x scale), paired with a 'success' haptic feedback.",
+    "For the scanner flow, render extracted data in an expandable bottom-sheet over the captured image. Use confidence indicators (e.g., small green circles or text 'AI Confidence: 95%') next to fields like 'Total' and 'Date'.",
+    "Always use 'expo-image' with a top-down gradient scrim (transparent to surfaceInverse) for text readability over the dashboard hero background."
+  ]
+}

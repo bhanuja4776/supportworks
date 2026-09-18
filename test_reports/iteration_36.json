@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only code review + light smoke of iteration-36 changes (privacy card subtitle, shift template editor with editable rows/picker/suggested chips, invoice code re-pick description overwrite, invoice suggested-for-participant, past shift delete). All 8 requested fixes are present in the code with correct testIDs and behaviour. Live sign-in reached the Clients tab; no diagnosis/condition strings surfaced on the client cards (env was reset so Ben/Jenny not present, but source code intentionally omits the legacy condition field).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_36.json"],
+  "action_items": [
+    "No fixes required. Optional: consider stripping the legacy `condition` field from the client payload API-side too, so it can never accidentally be re-surfaced (defence in depth). Currently the safety is UI-only in clients.tsx.",
+    "The `_suburbFromAddress` fallback (clients.tsx line 17-26) is only invoked when address_suburb is empty; verify legacy Ben/Jenny records have the address_suburb field populated on Drew's device — if they don't, the subtitle could still show only 'NDIS 43xxx' or nothing. Consider a lightweight migration."
+  ],
+  "critical_code_review_comments": [
+    "clients.tsx L107-114: subtitle is strictly built from `ndis_number`, `ageFromDob(date_of_birth)`, and `address_suburb || _suburbFromAddress(address)` — the deprecated `condition` field is NOT referenced anywhere in the list card. PRIVACY BUG RESOLVED at the code level.",
+    "ShiftTemplateEditor.tsx L235-283: each existing item renders four editable TextInputs (`tpl-item-code-<i>`, `tpl-item-qty-<i>`, `tpl-item-rate-<i>`, `tpl-item-desc-<i>`) wired to updateItem() — items are no longer read-only. FIX CONFIRMED.",
+    "ShiftTemplateEditor.tsx L287-294 + L347-397: 'tpl-open-picker' opens a bottom-sheet with `tpl-picker-search`, FILTER_TAGS chips (`tpl-tag-<tag>`), and a FlatList of `tpl-code-<code>` rows. applyPickedCode() dedupes by ndis_code before appending. FIX CONFIRMED.",
+    "ShiftTemplateEditor.tsx L291 'tpl-add-manual' pushes a blank {code:'',desc:'',qty:1,rate:0} row — behaves as required.",
+    "ShiftTemplateEditor.tsx L64-72 + L222-234: acceptedForClient derived from clients[i].accepted_plan_codes; suggestedForClient renders `tpl-suggest-<code>` chips above the item list once a client is picked. FIX CONFIRMED.",
+    "invoice/new.tsx L224-231 applyCode() now unconditionally sets description to code.name/label/description (no more `desc || existing` short-circuit). Re-picking a code overwrites the description. REGRESSION FIX CONFIRMED.",
+    "invoice/new.tsx L246-251 + L670-687: acceptedForPicker + suggestedForClient are rendered inside the ListHeaderComponent (when no query/tags) with testID `client-suggest-<code>`; tapping calls applyCode() which sets code/rate/description and closes the picker. FIX CONFIRMED.",
+    "shift.tsx L262-293: each past shift row exposes `del-past-shift-<id>` (with hitSlop 8) → confirmAction destructive dialog → api.deleteShift(id) → reloads list. FIX CONFIRMED.",
+    "Minor lint (not blocking): ShiftTemplateEditor.tsx imports `applyPickedCode` for suggested chips (L227) but pickers.close is only relevant if picker was open; harmless because setPickerOpen(false) is idempotent when the sheet is already closed.",
+    "No usage of deprecated expo-av / expo-barcode-scanner / expo-background-fetch in the reviewed files."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped)", "frontend": "100% (all 8 fixes present in source; onboarding + login + clients render verified live)" },
+  "seed_data_creation": "None — reused existing owner account TEST_USER_EMAIL. Environment has only one test participant (TEST_iter29 FE NoK), so Ben/Jenny privacy check could not be reproduced with real data — validated via source review instead.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "This iteration is a pure frontend refactor + privacy hardening. Live QA needs the owner to sign in on a device that already has Ben/Jenny seeded, or to create Ben with a `condition` value set via /api/clients to prove the list card still hides it. Post-reset preview envs will only contain TEST_iter29 unless seeded. All new testIDs are: tpl-item-code-<i>, tpl-item-qty-<i>, tpl-item-rate-<i>, tpl-item-desc-<i>, tpl-open-picker, tpl-add-manual, tpl-picker-search, tpl-tag-<tag>, tpl-code-<code>, tpl-suggest-<code>, client-suggest-<code>, del-past-shift-<id>.",
+  "rca_of_issue": "N/A — this run validated fixes rather than reproducing new bugs. All requested behaviours were implemented in the correct files (see files_of_reference)."
+}

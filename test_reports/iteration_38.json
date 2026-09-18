@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 38 validated end-to-end. BACKEND (7/7 pytest): (1) POST /api/ai/ndis-assistant with 'As an ABN sole trader, when do I need to register for GST?' returned answer mentioning $75,000 and codes=[] (no crash on empty codes). (2) POST /api/ai/ndis-assistant with 'Which code covers Saturday personal care?' returned >=1 catalogue code with {code,name,rate,unit} entries — format unchanged. (3) Multi-date invoice PDF contains 'Service dates:' header when items span 2026-07-01 and 2026-07-03; single-date invoice PDF contains 'Service date:' (singular) and NOT 'Service dates:'. (4) GET /api/shift-templates and GET /api/shifts?include_ended=true both return 200 arrays; POST /api/shift-templates creates a template that appears in the list. FRONTEND: Planner unified picker verified live — tapping the FAB and 'Saved shift / template' opens the modal titled 'Attach a shift or template' with REUSABLE SHIFT TEMPLATES section (pick-template-<id> row with blue TEMPLATE chip) AND PLANNED SHIFTS section. Tapping pick-template-<id> closed the modal AND pre-filled the parent form: title='TEST_iter38 Wed AM run', start=09:00, end=13:00, participant chip lit with 'TEST_iter29 FE NoK', and importantly the 'Saved shift / template' chip stayed UN-highlighted (linkedShiftId remained empty). Code Assistant expanded scope: all 3 new category chips present (faq-cat-sole_trader_compliance / faq-cat-safety_first_aid / faq-cat-incidents_reporting). Sent 'As an ABN sole trader, when do I need to register for GST?' — reply arrived in plain English mentioning $75,000, and NO NDIS code chips were rendered (codes:[]). Multi-date invoicing: created line 1 (rate 70.23, 09:00-13:00, sd 01/07/2026) → glance strip visible with glance-dates='1 date', glance-items='1', glance-hours='4.0 hrs', glance-total='$70.23', glance-range='1 Jul'. Added line 2 (10:00-12:00, sd 03/07/2026) → glance-dates='2 date' (SEE MINOR ISSUE), glance-items='2', glance-hours='6.0 hrs', glance-total='$140.46', glance-range='1 Jul – 3 Jul'. 'Import from shifts' opens the sheet with 3 real ended shifts listed (import-shift-<id>) for the participant; picked the flow but skipped multi-select apply for cleanup safety. Save-as-draft saved invoice INV-1028; downloaded PDF confirmed header 'Service dates: 01/07/2026 – 03/07/2026 (2 dates)' and per-line micro-caption 'Delivered: 01/07/2026 · 09:00–13:00 · GST-free' / 'Delivered: 03/07/2026 · 10:00–12:00 · GST-free'. Note: testIDs for FAQ categories are 'faq-cat-<key>' (not 'cat-<key>' as the review request said) — code uses the 'faq-cat-' prefix.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "invoice/new.tsx glance-dates i18n plural",
+        "issue": "When 2+ dates are present, glance-dates renders '2 date' (singular) instead of '2 dates'. `datesCount_plural` exists in en.json but i18next isn't picking it. Likely the i18n instance was initialised without `compatibilityJSON:'v3'` (or the equivalent plural rules), so `{{count}}` interpolation uses only the base key. Reference: /app/frontend/app/(tabs)/invoice/new.tsx:588 and /app/frontend/src/i18n/locales/en.json:899-900",
+        "testID": "glance-dates",
+        "priority": "LOW"
+      },
+      {
+        "component": "Iteration 38 review request vs actual code",
+        "issue": "Review plan step 9 refers to testIDs 'cat-sole_trader_compliance' / 'cat-safety_first_aid' / 'cat-incidents_reporting'; the actual code uses 'faq-cat-<key>' prefix. Not a bug — testing succeeded — but flag for docs/consistency. Reference: /app/frontend/app/(tabs)/assistant.tsx:206",
+        "testID": "faq-cat-*",
+        "priority": "INFO"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_38.json",
+    "/app/test_reports/pytest/iteration38_results.xml",
+    "/app/backend/tests/backend_iteration38_test.py"
+  ],
+  "action_items": [
+    "MINOR (LOW): Fix i18n plural for glance-dates so it renders '2 dates' not '2 date' when uniqueDates.length > 1. Simplest fix: use `t('invoiceNew.datesCount', { count: uniqueDates.length })` with i18next set to `compatibilityJSON: 'v3'`, OR add explicit ternary in invoice/new.tsx around line 588: `uniqueDates.length === 1 ? t('invoiceNew.datesCount', { count: 1 }) : t('invoiceNew.datesCount_plural', { count: uniqueDates.length })`."
+  ],
+  "critical_code_review_comments": [
+    "planner.tsx applyTemplate() (L185-195) is correctly non-destructive: only sets title/time/endTime if the field is empty, and importantly does NOT set linkedShiftId — templates are blueprints, not shift records. Verified live.",
+    "planner.tsx unified picker (L722-747) renders REUSABLE SHIFT TEMPLATES from templateList and PLANNED SHIFTS from shiftsList (filtered by status==='planned' on L91). Clear separation, correct data source.",
+    "server.py _build_assistant_system() (L633-663) widened compliance topics correctly (GST $75,000 threshold, incident reporting, worker screening, ATO/BAS, insurance, record retention, safety & first aid). The instruction 'empty [] for non-code compliance answers' is explicit — verified in tests.",
+    "server.py PDF header conditional (L1863-1867) is a clean minimal edit: sorted unique service_dates → if >1 use plural 'Service dates: X – Y (N dates)', else fall back to singular 'Service date: X'. Verified in both PDFs.",
+    "invoice/new.tsx per-line service_date accessed via DateInput (L750-758). Correctly falls back to invoice-level serviceDate in bodyFor (L417). Glance summary strip (L583-614) computes uniqueDates, filledItems, totalHoursMin from all participants' filled line items — solid logic.",
+    "invoice/new.tsx totalHoursMin (L370-378) uses start_time/end_time delta first, and falls back to quantity for hourly-style codes only if NDIS code doesn't include 'KM' — sensible for kilometre lines.",
+    "The 'Import from past shifts' sheet correctly gates import-shifts-btn on !!p.client_id (L776) — hides the button until a participant is linked. Verified live."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration38_test.py"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 pytest)",
+    "frontend": "100% functional (Planner picker, Assistant scope, glance strip, PDF headers all verified live); 1 minor i18n plural cosmetic bug in glance-dates"
+  },
+  "seed_data_creation": "Created 1 shift-template (TEST_iter38 Wed AM run, 09:00-13:00, client TEST_iter29 FE NoK) and 1 planned-task shift (2026-08-01) for testing; both were DELETED at end of run. One draft invoice INV-1028 was created by the save flow and left in place so main agent can inspect the PDF headers if desired.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Owner org has 1 client (TEST_iter29 FE NoK, id 6a4d9ceca95d11cabc2bbb87), ~6 ended shifts, and multiple draft invoices. Draft INV-1028 (from this run) has two multi-date items (2026-07-01 and 2026-07-03) and can be re-fetched at /api/invoices/<id>/pdf to re-verify the 'Service dates:' header. New testIDs to remember: attach-saved-shift, pick-template-<id>, pick-shift-<id> (planner); faq-cat-sole_trader_compliance / faq-cat-safety_first_aid / faq-cat-incidents_reporting (assistant); invoice-glance, glance-dates, glance-items, glance-hours, glance-total, glance-range, item-servicedate-<pIdx>-<i>, import-shifts-btn-<pIdx>, import-shift-<id>, import-apply-btn (invoice/new). DateInput accepts DD/MM/YYYY digits (typed as 01072026 → auto-slashed) — DO NOT try to fill ISO strings.",
+  "rca_of_issue": "MINOR i18n plural bug in glance-dates strip. Root cause: i18next in the app is likely running without v3 plural compatibility, so the `<key>_plural` variant isn't selected when count > 1. Effect: cosmetic — the strip reads '2 date' instead of '2 dates' for multi-date invoices. Reproduction: /invoice/new → attach participant → add 2 items with different per-line service dates → observe glance-dates. Mitigation: either (a) set i18n init `compatibilityJSON: 'v3'` (or add English plural rules) OR (b) explicit ternary in invoice/new.tsx:588 as noted in action_items."
+}

@@ -1,0 +1,68 @@
+{
+  "summary": "Iteration 25 (Phase 1 bug fixes + Phase 2 client care-profile rework) verified end-to-end. Backend: 7/7 pytest cases pass in /app/backend/tests/backend_iteration25_test.py — owner (TEST_USER_EMAIL/admin) login OK; GET /api/billing/membership returns {status:'trialing', plan:'trial', is_active:true, expires_at:2026-07-21}; POST /api/clients with care_sections [{title:'Communication',text:'Uses short sentences'},{title:'Mobility',text:'Wheelchair user'}] creates client and response contains NO condition/severity fields (verified); GET /clients/{id} returns care_sections intact and excludes _id; PATCH /clients/{id} with 3 replacement care_sections persists correctly (verified via subsequent GET); legacy condition/severity fields sent in POST body are silently ignored (not stored, not in response); POST /clients/{id}/notes + GET list regression passes (text/date/client_id/id fields correct, _id excluded); POST /account/reset-data (TEST_DEMO_EMAIL) returns {success:true, deleted:{...}} and afterwards GET /clients returns [] + GET /settings returns default 'Your Support Business'. Frontend (mobile viewport 390x844, real browser context): (1) FRESH LOGIN as owner in a clean localStorage state — onboarding walkthrough appears with 7 slide dots (verified: 6 successful 'Next' taps landed on last slide, onboarding-getstarted testID visible), last slide body text contained 'trial' / '14-day' copy, tapping 'Skip' routed to /dashboard. (2) Dashboard shows GREEN trial-banner testID with text '14 days left in your free trial · View plans' — tapping it routed to /membership showing 'Free 14-day trial' + 'Trial ends 21/07/2026 · 14 days left' (dd/mm/yyyy ✓). (3) Getting Started onboarding-checklist rendered with 'Getting Started · 0 of 4 done' and 'Set up your business profile' UNTICKED — matches the freshly-wiped settings state. After creating a client via the form the checklist auto-updated to '1 of 4 done' with 'Add your first client' ticked (green strikethrough, seen in follow-up screenshot). (4) Bogus route /this-does-not-exist correctly REDIRECTS to '/' (dashboard) — no expo-router 'Unmatched Route' page (body text check verified 'Unmatched Route' absent). (5) Account screen shows red DANGER ZONE with 'Start fresh — erase all data' row (account-reset-data testID, subtext 'Deletes every client, invoice, receipt, note & setting. Your account stays.'). NOT executed on owner to preserve the trial clock; equivalent flow verified via backend reset-data pytest on demo account. (6) New Client form: 'Condition/Disability' and 'Severity' fields ARE FULLY REMOVED (body text check both false). 'Care profile' section visible with suggestion chips care-chip-Communication / care-chip-Mobility / care-chip-Personal care (all FOUND) + care-chip-custom. Tapping Communication chip added editable section with testIDs care-title-0 (pre-filled 'Communication'), care-text-0 (editable) and care-remove-0 (trash) — all present. DOB DateInput auto-formatted '15031990' → '15/03/1990' ✓. Saved client successfully. (7) Client detail screen: Care Profile card renders with 'COMMUNICATION' (uppercase) title + 'Uses short sentences and gestures' text. (8) Today's Notes: tapped notes-preview to expand, typed 'Iter25 note - shift went great today' via notes-inline-input, blurred to persist, tapped notes-save-client-btn → client picker sheet opened with notes-client-{id} row → tapped client → note SAVED to client and Today's Notes TEXT CLEARED back to 'Jot down anything…' placeholder (verified via cache:/notes/2026-07-07 = {text:''} in localStorage). Backend logs clean. Console shows only pre-existing RN-Web deprecation warnings (shadow*, pointerEvents, expo-notifications web token) — not iteration-25 regressions. React-native-keyboard-controller is native-only, not tested on web (per spec). Reset-data on OWNER was intentionally NOT executed to preserve the fresh trial state (test_credentials.md still valid). No blocking issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "client/[id].tsx header", "issues": ["DOB in the client-detail summary line renders as ISO '1990-03-15' (e.g. '36 yrs · 1990-03-15') instead of dd/mm/yyyy. Spec item 6 explicitly enforces dd/mm/yyyy across the app and the DOB *input* now uses the DD/MM/YYYY DateInput — for consistency the DOB display should also render dd/mm/yyyy (e.g. '15/03/1990'). Low priority, not called out in the review checklist. Reference: /app/frontend/app/(tabs)/client/[id].tsx (header meta line combining age + date_of_birth)."]}
+    ],
+    "react_native_issues": [
+      {"component": "RN-Web deprecation warnings (pre-existing carry-over from iter 18-24)", "issue": "'shadow*' style props and 'props.pointerEvents' deprecation warnings still fire. Cosmetic. Migrate to boxShadow / style.pointerEvents when convenient. Not introduced this iteration."},
+      {"component": "expo-notifications web token warning", "issue": "[expo-notifications] Listening to push token changes is not yet fully supported on web — expected on web preview, works on native builds."}
+    ]
+  },
+  "iteration_25_verification": {
+    "backend": {
+      "owner_membership_trialing": {"plan": "trial", "status": "trialing", "is_active": true, "expires_at": "2026-07-21T02:53:34"},
+      "client_care_sections_create_get_patch": "PASS (3 pytest cases + legacy condition/severity ignored)",
+      "client_notes_regression": "PASS",
+      "reset_data_demo_wipes_clients_and_settings": "PASS (deleted clients+settings, /clients returns [], /settings returns default)"
+    },
+    "frontend": {
+      "not_found_redirect": {"url_bogus": "/this-does-not-exist", "landed_on": "dashboard-screen", "unmatched_route_absent": true},
+      "onboarding_walkthrough": {"appears_on_first_login": true, "dot_count_via_next_taps": 7, "last_slide_getstarted_testid": true, "last_slide_mentions_14day_trial": true, "skip_routes_to_dashboard": true},
+      "trial_banner": {"testid": "trial-banner", "text": "14 days left in your free trial / View plans", "tap_routes_to_membership": true},
+      "membership_screen": {"header": "Free 14-day trial", "meta": "Trial ends 21/07/2026 · 14 days left", "dd_mm_yyyy": "21/07/2026"},
+      "onboarding_checklist": {"visible": true, "initial_progress": "0 of 4 done", "profile_step_unticked": true, "auto_updates_after_add_client_to_1_of_4": true},
+      "account_danger_zone": {"testid": "account-reset-data", "label": "Start fresh — erase all data", "subtext": "Deletes every client, invoice, receipt, note & setting. Your account stays.", "executed_on_owner": false, "reason_not_executed": "would wipe trial state per spec (backend reset covered via demo pytest)"},
+      "client_form": {"no_condition_field": true, "no_severity_field": true, "care_profile_section": true, "care_chips_found": ["Communication", "Mobility", "Personal care", "custom"], "dob_ddmmyyyy_input": "15031990 -> 15/03/1990", "chip_tap_adds_editable_section_with_testids": ["care-title-0", "care-text-0", "care-remove-0"]},
+      "client_detail_care_profile_card": {"title_uppercase": "COMMUNICATION", "text_visible": "Uses short sentences and gestures", "card_header": "Care Profile"},
+      "todays_notes_save_to_client_clears_text": {"typed": "Iter25 note - shift went great today", "picker_opened": true, "picker_row_testid": "notes-client-{id}", "cleared_after_save": true, "localstorage_note_cache_text_empty": true}
+    }
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_25.json",
+    "/app/test_reports/pytest/iteration25_results.xml",
+    "/app/backend/tests/backend_iteration25_test.py"
+  ],
+  "action_items": [
+    "OPTIONAL: format DOB on client-detail header as dd/mm/yyyy (currently shows ISO '1990-03-15' in the 'X yrs · YYYY-MM-DD' meta line). Consistency with iteration-25 dd/mm/yyyy enforcement. Reference: /app/frontend/app/(tabs)/client/[id].tsx summary line.",
+    "OPTIONAL (carry-over): migrate shadow* -> boxShadow and props.pointerEvents -> style.pointerEvents to silence RN-Web deprecation warnings.",
+    "No blocking issues — iteration 25 ships as-is."
+  ],
+  "critical_code_review_comments": [
+    "server.py:2586-2613 /account/reset-data correctly loops through RESETTABLE_COLLECTIONS filtered by org_id, wipes settings via delete_one({_id: 'business::<org>'}), and ONLY the owner email restarts the 14-day trial + reverts plan to 'trial'/status 'trialing'. Legacy daily_notes keyed by _id prefix also cleaned.",
+    "server.py:1097-1118 Client + ClientCreate models correctly define care_sections: List[dict] with default_factory=list and NO 'condition' / 'severity' fields — legacy fields sent by clients are dropped by Pydantic (extra='ignore' via BaseModel default) and never surface in doc_out response. Verified in pytest test_create_client_ignores_legacy_condition_severity.",
+    "server.py:2664-2678 /billing/membership owner override: if trial has lapsed, auto-flip to lifetime — good UX safety net so the test/demo owner is never locked out. Trial still returns is_active:true correctly during 14-day window.",
+    "+not-found.tsx uses <Redirect href='/'> — clean, no flicker of 'Unmatched Route' observed; confirmed via body text scan.",
+    "OnboardingChecklist derives 'profile' from settings.abn OR non-default business_name — after /account/reset-data wipes settings, checklist correctly shows '0 of 4 done' with profile UNTICKED (verified). Auto-refresh via useFocusEffect picks up the new client and moves progress to '1 of 4' immediately.",
+    "NotesCard.saveToClient (line 45-54) awaits api.addClientNote then calls persist({text:''}) — the cleared state is persisted server-side (verified via /api/notes/2026-07-07 GET returning empty text). Nice: setPickerOpen(false) before persist so the sheet dismisses immediately and toast fires last.",
+    "ClientFormSheet care_sections implementation (lines 181-220): suggestion chips filter out already-added titles (prevents duplicates), 'Custom' chip pushes an empty {title,text} row, per-row testIDs correctly indexed (care-title-{i}/care-text-{i}/care-remove-{i}) — matches Playwright expectations.",
+    "Cosmetic: /app/frontend/app/(tabs)/client/[id].tsx header meta likely still shows raw date_of_birth (ISO). Suggest wrapping with the DateInput formatter or a small util fmtDDMMYYYY(iso) for parity with membership/invoice/reminder rendering.",
+    "No file exceeds 700 lines: NotesCard.tsx 225 lines, ClientFormSheet.tsx 281 lines, OnboardingChecklist.tsx 121 lines, server.py client/reset/billing sections ~140 lines each — modular."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration25_test.py (new, 7 cases — all pass)",
+    "/app/test_reports/pytest/iteration25_results.xml (new)",
+    "/app/test_reports/iteration_25.json (this report)"
+  ],
+  "success_rate": {"backend": "7/7 (100%)", "frontend": "10/10 spec items verified (fresh-login walkthrough w/ 7 dots + trial slide, Skip -> dashboard, trial banner + tap to membership, Free 14-day trial + dd/mm/yyyy Trial ends date, Getting Started 0 of 4 with profile unticked, Save to client clears note, New Client form no condition/severity + chip picker + editable sections + DOB auto-slash, Client detail Care Profile card renders, /bogus redirects to dashboard, Account Danger Zone Start fresh visible — reset execution deferred per spec)"},
+  "seed_data_creation": "During UI testing: created TEST_UI_Iter25 client via the form (id=6a4c6ce9f5d783945f065a05) + one client_note saved from Today's Notes ('Iter25 note - shift went great today'). Both DELETED after testing via API. Today's Notes text also re-cleared. Backend pytest test data (TEST_Care_*, TEST_Legacy_*, TEST_NoteReg_*) is auto-cleaned by module-scoped fixture teardown. Demo account (TEST_DEMO_EMAIL) was RESET as part of the reset-data pytest — its org is now empty (matches spec 'demo starts with an empty org'). Owner account left with 0 clients, 0 invoices, empty today's note, fresh 14-day trial intact (expires 21/07/2026).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 25 fully verified. Owner (TEST_USER_EMAIL) org remains empty with a fresh 14-day trial expiring 21/07/2026 — DO NOT run POST /api/account/reset-data on the owner unless you want to reset the trial clock (backend reset-data test uses the demo account so owner is preserved). AsyncStorage flag ndis_onboarded:<user_id> is set in localStorage per browser session — new browser contexts will show the walkthrough on first login (this is the intended behaviour). React-native-keyboard-controller is a NATIVE-ONLY package (no-op on web) — do not attempt to verify keyboard avoidance on the web preview. Only outstanding cosmetic item: DOB on the client detail header renders as ISO '1990-03-15' instead of dd/mm/yyyy — flag for polish, not blocking."
+}

@@ -1,0 +1,57 @@
+{
+  "summary": "Frontend-only test of NEW onboarding walkthrough + extended i18n on Dashboard & Clients. 5 of 6 requested flows PASS. New-user onboarding works end-to-end (register -> onboarding-screen -> 5x next -> getstarted -> dashboard with Quick Actions). Skip on a fresh signup correctly lands on the dashboard. Existing user (TEST_DEMO_EMAIL) is NOT forced through onboarding and goes straight to the dashboard. Extended i18n is EXCELLENT: switching to Thai fully translates Dashboard (Quick Actions, Tools, Timeline, Start Shift CTA, NDIS Code Assistant banner, all metric labels, 'Outstanding · 0' with actual number) AND Clients (title, participants count '2 ผู้เข้าร่วม', search placeholder, empty state). ZERO raw interpolation placeholders leaked anywhere ({count}/{days}/{name}/{done}/{total}/{amount} all interpolated correctly in Thai and English). English revert works cleanly. No red-box crashes, no console JS exceptions. ONE ISSUE FOUND: re-open tour from Account -> onboarding-skip returns the user to the DASHBOARD instead of Account (still logged in, so not destructive, but the spec says 'should return to the Account screen'). RCA below.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "onboarding.tsx (tour mode) / RootNav router history",
+        "issue": "When re-opening the tour from Account (account-tour -> /onboarding?tour=1) and tapping onboarding-skip, the user lands on the Dashboard (URL becomes '/') instead of returning to the Account screen. User is NOT logged out (verified), so severity is medium — the tour flow completes safely but breaks the expected 'return to Account' contract in the test spec. Reference: frontend/app/(tabs)/onboarding.tsx:37 (router.back()).",
+        "testID": "onboarding-skip / account-tour",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "dashboard (Thai)",
+        "issues": [
+          "NotesCard component ('Today's Notes' / 'Record' / 'Tap to jot a note, or hit Record to dictate…') remains in English on Thai dashboard. Not explicitly listed in the extended-i18n scope for this iteration, so noting for E1 as a follow-up (src/components/NotesCard.tsx uses hard-coded strings)."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "web preview (multiple screens)",
+        "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — repeated on nearly every navigation on web. Non-blocking but should be migrated eventually. Reference: any StyleSheet using shadowColor/shadowOffset/shadowOpacity/shadowRadius."
+      },
+      {
+        "component": "web preview (multiple screens)",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' — non-blocking but flag for future cleanup."
+      }
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_16.json"],
+  "action_items": [
+    "FIX (medium): re-open-tour Skip must return to Account. In frontend/app/(tabs)/onboarding.tsx finish(), when isTour==true, prefer `router.replace('/account')` instead of `router.back()`, because router.back() on web (Expo Router) inside the (tabs) group unwinds back to the tabs root '/', not to the previous non-tabs push. Alternative: navigate to /account with router.replace when isTour so the Account screen is guaranteed regardless of history stack state.",
+    "OPTIONAL: extend i18n to NotesCard component (Today's Notes / Record / Tap to jot a note...) — currently English in every language.",
+    "OPTIONAL: migrate shadow* style props to boxShadow and props.pointerEvents to style.pointerEvents to silence React Native web deprecation warnings."
+  ],
+  "critical_code_review_comments": [
+    "AuthContext: needsOnboarding is in-memory (default false) and only set true inside registerEmail. That correctly avoids showing the tour to existing users on login. Good.",
+    "AuthContext.completeOnboarding writes AsyncStorage['ndis_onboarded']='1' but the initial session-restore effect never READS that key — meaning if a new user registers and reloads the page before completing onboarding, needsOnboarding becomes false and they silently skip the walkthrough. Not requested behaviour to fix here (per-browser AsyncStorage persistence was called out as acceptable in the review request), but worth noting.",
+    "RootNav routing effect (app/_layout.tsx:112-119) is clean; needsOnboarding takes precedence over inAuth/(tabs) redirect. No infinite-redirect loops observed.",
+    "onboarding.tsx finish() uses router.back() when isTour — this is the exact source of the misroute-to-Dashboard bug. Recommend router.replace('/account') for deterministic behavior on both web and native.",
+    "Translation JSON files (checked th.json vs en.json for the outstanding/days/participants/tasksDone/deleteMsg keys) preserve all {{count}}/{{days}}/{{done}}/{{total}}/{{name}}/{{amount}} placeholders correctly. Interpolation works flawlessly at runtime — verified via visible '0' number in 'ที่ค้างชำระ · 0' and '2 ผู้เข้าร่วม'.",
+    "Onboarding walkthrough uses React Native primitives correctly (View/Text/Pressable/ScrollView, StyleSheet.create, Ionicons, LinearGradient, testIDs on every interactive element). No deprecated Expo APIs (no expo-av / expo-barcode-scanner / expo-background-fetch)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "skipped (per request)",
+    "frontend": "5/6 flows PASS, 1/6 PARTIAL (re-open tour Skip returns to Dashboard instead of Account)"
+  },
+  "seed_data_creation": "Two throwaway users registered during test: test_1783153720@example.com and test_skip_<ts>@example.com (both with password TEST_PASSWORD). These live only in the demo user's org and can be ignored/cleaned by main agent if desired.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Onboarding walkthrough is functionally sound end-to-end for NEW users. Existing user regression is verified. Extended i18n for Dashboard and Clients has ZERO placeholder-leak issues and full coverage — this can be considered complete. The one remaining fix is a single-line change in frontend/app/(tabs)/onboarding.tsx finish(): replace `router.back()` with `router.replace('/account')` (or similar) so account-tour -> skip returns to Account as spec'd. After the fix, re-run just that flow: demo login -> dashboard -> tap tool-account -> tap account-tour -> tap onboarding-skip -> assert URL/screen = /account.",
+  "rca_of_issue": "REPRO for the 're-open tour Skip returns to Dashboard' bug: (1) login TEST_DEMO_EMAIL/TEST_PASSWORD, (2) on Dashboard tap tool-account (in-app navigation into Account), (3) tap account-tour — URL becomes /onboarding?tour=1 and onboarding-screen renders, (4) tap onboarding-skip. EXPECTED: return to Account (per spec). OBSERVED: URL becomes '/' and Dashboard is displayed; user remains logged in. RCA: onboarding.tsx line 37 calls router.back() when isTour===true. Under expo-router web, because both Account and Onboarding live under the same (tabs) group, router.back() unwinds the browser history to the root '/', not to the previous Stack push of /account. MITIGATION: change `if (isTour) router.back();` to `if (isTour) router.replace('/account');` for deterministic behavior on both web preview and native."
+}

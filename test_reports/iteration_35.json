@@ -1,0 +1,70 @@
+{
+  "summary": "Iteration 35 — Security-audit fix verification (SEC-001 through SEC-004) + regression sweep. 24/24 pytest cases PASS (100%). SEC-001 (CRITICAL): POST /api/auth/forgot now returns exactly {\"sent\": true} for both existing (TEST_USER_EMAIL) and unknown emails — no `reset_token`/`token` field in the response body, no user-enumeration signal via body shape. The server correctly logs a `[auth/forgot] reset token issued for <email>: token starts with '<prefix>…'` breadcrumb (WARNING level, prefix only — full token stays in DB). End-to-end reset flow verified: fresh forgot → token pulled from Mongo → /api/auth/reset with new password → 200; the previous Bearer session becomes 401 (login-with-new-password works). Rolled the password back to 'TEST_PASSWORD' at the end (via direct bcrypt write to bypass the 5/min rate limiter that /auth/forgot legitimately enforces) so downstream iterations keep working. SEC-002 (HIGH): grep -n '_hash_pw(\"TEST_PASSWORD\")' /app/backend/server.py returns ZERO matches; the seed block at server.py:3086 correctly reads `os.getenv('SEED_OWNER_PASSWORD') or _secrets.token_urlsafe(18)` and logs the initial password at WARNING for the operator. SEC-003 (MEDIUM): POST /api/ndis-catalogue/import returns 403 with detail 'Catalogue imports are restricted to the platform owner.' for a freshly-registered non-owner account; the same call from Drew (owner_email match on TEST_USER_EMAIL) returns 200 with imported/updated/total counts. SEC-004 (MEDIUM): all 8 base64 upload endpoints (POST /api/scan-receipt, /api/scan-document, /api/transcribe, /api/clients, /api/receipts, /api/credentials, /api/client-documents and PUT /api/settings) return 413 BEFORE decode when the base64 payload exceeds MAX_IMAGE_B64=12,582,912 (or MAX_AUDIO_B64=33,554,432 for /transcribe) — verified by sending 'A' * (max+16). Normal-sized payloads (200 KB base64) still succeed on create_client/put_settings/create_receipt/create_credential/create_client_doc — no regression. General regression: owner login → GET /api/clients (200 list) → POST /api/clients (200) → POST /api/invoices with 1 line item (200, total $200) → GET /api/invoices/{id}/pdf returns application/pdf with %PDF- magic bytes. Password_resets TTL index confirmed present on db.password_resets.expires_at with expireAfterSeconds=0. Backend started cleanly (no supervisor errors).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "sec_matrix": {
+    "SEC-001_no_token_in_body_existing_email": "PASS (body == {sent: true} exactly)",
+    "SEC-001_no_token_in_body_unknown_email": "PASS (identical body shape → no user enumeration)",
+    "SEC-001_server_log_breadcrumb_present": "PASS ('[auth/forgot] reset token issued for … token starts with' in backend.err.log)",
+    "SEC-001_e2e_reset_new_pw_login_works": "PASS",
+    "SEC-001_old_bearer_session_invalidated": "PASS (401 after reset)",
+    "SEC-001_rollback_to_admin": "PASS (verified via /auth/login after restore)",
+    "SEC-002_no_hash_pw_admin_literal": "PASS (grep returns 0 matches)",
+    "SEC-002_seed_uses_env_or_random_token": "PASS (SEED_OWNER_PASSWORD env + _secrets.token_urlsafe(18) fallback)",
+    "SEC-003_non_owner_import_403": "PASS (detail: 'Catalogue imports are restricted to the platform owner.')",
+    "SEC-003_owner_import_200": "PASS (imported/updated/total returned)",
+    "SEC-004_scan_receipt_oversize_413": "PASS",
+    "SEC-004_scan_document_oversize_413": "PASS",
+    "SEC-004_transcribe_oversize_413": "PASS (audio cap 32 MB base64)",
+    "SEC-004_create_client_oversize_413": "PASS",
+    "SEC-004_put_settings_logo_oversize_413": "PASS",
+    "SEC-004_create_receipt_oversize_413": "PASS",
+    "SEC-004_create_credential_oversize_413": "PASS",
+    "SEC-004_create_client_doc_oversize_413": "PASS",
+    "SEC-004_regression_create_client_normal_200": "PASS",
+    "SEC-004_regression_put_settings_logo_normal_200": "PASS",
+    "SEC-004_regression_create_receipt_normal_200": "PASS",
+    "SEC-004_regression_create_credential_normal_200": "PASS",
+    "SEC-004_regression_create_client_doc_normal_200": "PASS",
+    "GENERAL_regression_login_list_clients": "PASS",
+    "GENERAL_regression_create_invoice_and_pdf": "PASS (application/pdf %PDF- magic bytes)",
+    "TTL_index_password_resets_expires_at_0s": "PASS"
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration35_test.py",
+    "/app/test_reports/pytest/iteration35_results.xml",
+    "/app/test_reports/iteration_35.json"
+  ],
+  "action_items": [
+    "None blocking. All 4 SEC-audit fixes verified. OPTIONAL follow-up: wire up an email provider (Resend/SendGrid) so /api/auth/forgot can actually deliver the reset link rather than relying on the server-side log breadcrumb. Once email is live, remove the WARNING log line at server.py:2922 (it's currently intentional but should not remain in production long-term)."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/server.py:2901-2923 — /auth/forgot now correctly returns {sent: true} for BOTH known and unknown emails (no enumeration side-channel) and never puts the token in the HTTP response. The only breadcrumb is a WARNING log with the first 6 chars of the token (safe until email is wired). The DB record has expires_at + one-hour TTL enforced by the TTL index. Good.",
+    "/app/backend/server.py:870-901 — /ndis-catalogue/import now resolves the current user via get_current_user(authorization) and 403s any non-owner email. The owner email is env-overridable via PLATFORM_OWNER_EMAIL — good hardening for staging/multi-tenant.",
+    "/app/backend/server.py:420-434 — _check_upload_size runs BEFORE base64.b64decode on every image/audio/file path (scan-receipt, scan-document, transcribe, create_client, put_settings, patch client, receipts, credentials, client-documents). Correctly strips the data-URL prefix before measuring so a legit data-URI header doesn't skew the size check.",
+    "/app/backend/server.py:3086 — seed uses os.getenv('SEED_OWNER_PASSWORD') or _secrets.token_urlsafe(18). Great. Also sets must_change_password: True on the fresh user record. Recommend future work: enforce must_change_password server-side on the first authenticated request (a placeholder note at line 3102 hints at _password_reset_required but it isn't wired yet — non-blocking, low risk since the initial random password is only visible to the server operator).",
+    "/app/backend/server.py:3069 — TTL index on db.password_resets.expires_at with expireAfterSeconds=0 is created at startup. Confirmed present via pymongo.index_information()."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration35_test.py (new — 24 pytest cases across SEC-001..SEC-004 + regression + TTL index)",
+    "/app/test_reports/pytest/iteration35_results.xml (JUnit report)",
+    "/app/test_reports/iteration_35.json (this report)"
+  ],
+  "success_rate": {
+    "backend": "24/24 (100%)",
+    "frontend": "N/A (backend-only run as requested)"
+  },
+  "seed_data_creation": "Test-only: (a) registered one throw-away user TEST_sec_<uuid>@example.com for the SEC-003 non-owner check (not deleted — cheap; can be swept via db.users.deleteMany({email: /^TEST_sec_/}) if needed); (b) created + deleted several TEST_-prefixed clients/receipts/credentials/client-documents inline; (c) briefly reset Drew's password and rolled it back to 'TEST_PASSWORD' via a direct bcrypt write at end of test (the direct write is used only to sidestep the /auth/forgot 5/min rate limiter — production reset codepath was exercised at least once with the temp password).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 4 security fixes are verified and Drew's password is 'TEST_PASSWORD' as expected. To re-run: `pytest /app/backend/tests/backend_iteration35_test.py -v`. If the /auth/forgot rate limiter is hit during a same-minute re-run, wait ~60 s or restart the backend (`sudo supervisorctl restart backend`) to reset the in-memory slowapi counters. The tests assume MONGO_URL/DB_NAME env vars are set (they are, via /app/backend/.env) so the direct-Mongo helpers work.",
+  "rca_of_issue": "Not applicable — this iteration verified fixes that were correctly implemented by the main agent. One incidental finding during authoring: the /auth/forgot endpoint is rate-limited at 5 requests/minute. A naive round-trip test that does forgot→reset→forgot→reset in one run WILL trip that limit and the second forgot's returned 200 doesn't mean a new DB record was written (slowapi 429s before the handler runs). Test rewritten to do a single production forgot/reset cycle and use a direct bcrypt hash write for the rollback — this exercises the production reset codepath exactly once, restores Drew's password without contending with the rate limiter, and leaves state clean for downstream iterations."
+}

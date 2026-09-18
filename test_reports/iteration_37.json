@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 37 validated end-to-end. FRONTEND: AI Code Assistant attach modal fully working — after querying the assistant and getting a code-chip, the attach sheet opens with (a) YOUR CURRENT SHIFT row (green) when a shift is active, correctly labelled 'Add to current shift · Adds to draft INV-1021 · TEST_iter29 FE NoK' because the shift already had a linked draft, (b) OTHER UNPAID DRAFTS listing 4 drafts (excluding the shift-linked one) with 'INV-XXXX · Client · dd/MM/yyyy' format, (c) OR START FRESH → New invoice, (d) Cancel closes the sheet. Verified via API that tapping the active-shift row DID add the item to invoice INV-1021 (items list now has 01_002_0107_1_1). When no active shift, the section is correctly HIDDEN. Scan tab renders 'scan-screen' with the pill toggle Receipt/Document both wired, tapping Document flips the header to 'Document Scanner' with the expected hint, and capture-btn is visible with the document-text icon — camera fake succeeded in Chromium so the scanner UI is fully reachable. BACKEND: 3/3 pytest cases pass — POST /api/scan-document returns the {success, data:{title,doc_type,date,key_parties,full_text,confidence}} contract, POST /api/client-documents persists {extracted_text, doc_date, key_parties, type} correctly and GET returns them (with no _id leak), and GET /api/launch-roadmap.pdf returns a valid %PDF for the owner.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_37.json",
+    "/app/test_reports/pytest/iteration37_results.xml",
+    "/app/backend/tests/backend_iteration37_test.py"
+  ],
+  "action_items": [
+    "No fixes required — all requested flows for iteration 37 verified end-to-end (attach modal all 3 branches wired, Scan Document mode toggle & capture path verified, backend endpoints return the correct contract)."
+  ],
+  "critical_code_review_comments": [
+    "assistant.tsx openAttach() correctly loads both invoices and active shift in parallel, filters shift-linked invoices out of the drafts list (lines 99-107), so drafts don't double-appear as both 'active-shift' target and 'other draft'.",
+    "assistant.tsx attachToActiveShift() (L134-178) branches correctly: uses activeShift.invoices[0] when present (calls addInvoiceItem), otherwise creates a NEW draft with shift_id set and the item pre-populated. Alert shows a 'View invoice' action that pushes /invoice/<id>. Solid.",
+    "scan.tsx uses expo-camera (not deprecated expo-barcode-scanner). CameraView+useCameraPermissions is the modern API. No deprecated packages in this file.",
+    "scan.tsx mode toggle correctly gates the review sheet fields (isDoc && docData) vs (!isDoc && data). Both the document Save button and receipt Save button correctly disable when required fields (pickedClientId + docData.title) are missing.",
+    "scan.tsx saveDocument() (L116-145) posts extracted_text/doc_date/key_parties (split on comma → trimmed → filtered) exactly matching the backend ClientDocCreate schema.",
+    "server.py /api/scan-document (L516-546) enforces MAX_IMAGE_B64, consumes AI quota, uses GPT-4o via emergentintegrations LlmChat + ImageContent, and returns a strict JSON contract. Failure path is HTTP 500 with 'Extraction failed: <msg>' — matches the spec.",
+    "server.py /api/client-documents POST (L2656-2663) accepts extracted_text/doc_date/key_parties list and stamps org_id + created_at; the corresponding GET (L2666-2670) sorts by created_at desc and returns all fields including the new AI ones via doc_out (which strips MongoDB _id)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration37_test.py"
+  ],
+  "success_rate": { "backend": "100% (3/3 pytest)", "frontend": "100% (attach modal all 3 branches verified live; scan document mode toggle verified live)" },
+  "seed_data_creation": "Created & then ended one active shift for the owner (client TEST_iter29 FE NoK) via POST /api/shifts/start + PATCH /api/shifts/{id}/end so both branches of the attach-modal (with and without active shift) could be exercised. The shift's draft invoice INV-1021 gained one 01_002_0107_1_1 line-item during the test; main agent may leave or delete it.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Owner org contains: 1 client (TEST_iter29 FE NoK), 4-5 draft invoices (INV-1010, 1017-1019, 1021), no active shift after cleanup. To exercise the attach-modal active-shift branch again: POST /api/shifts/start {client_ids:[<cid>], client_id:<cid>} → the shift auto-creates a linked draft (see server.py L2183+). New testIDs added in this iteration: attach-active-shift, attach-inv-<id>, attach-new-invoice, attach-cancel (assistant), mode-receipt, mode-document, field-doc-title, field-doc-date, field-doc-parties, field-doc-extracted, doctype-<Type>, doc-client-<id>, save-doc-btn (scan). Backend endpoints unchanged from prior iterations — /api/scan-document and /api/client-documents already existed and are stable.",
+  "rca_of_issue": "N/A — no bugs found this iteration."
+}

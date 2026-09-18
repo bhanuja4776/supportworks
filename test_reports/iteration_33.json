@@ -1,0 +1,67 @@
+{
+  "summary": "Iteration 33 — MIXED. Backend PASS 6/6 (task end_time round-trip via POST/GET/PATCH, invoice PDF regression still 200 application/pdf, unauth still 401). Frontend PASS on Business Settings save-lifecycle (save button HIDDEN on load / VISIBLE after edit / green settings-saved-badge briefly then settings-clean pill), Shift screen (Save to planner + Start now buttons both present, schedule-date input removed), Planner new-task modal (task-start-input auto-formats '0900'→'09:00', task-end-input '1730'→'17:30', task-duration-hint reads 'Shift duration: 8h 30m'). FRONTEND CRITICAL BUG: the new in-app invoice preview screen (/invoice/preview/[id].tsx) NEVER finishes loading — screen is stuck on the ActivityIndicator, invoice-preview-screen testID never mounts, footer buttons preview-close-btn/preview-download-btn never appear, no paper mock renders (verified over 7 s wait, and repeated via both preview-invoice-btn tap and direct URL navigation). Backend calls succeed independently (GET /api/invoices/{id} 200 in 96 ms, GET /api/auth/me 200 in 156 ms) so this is a pure client-side rendering issue. Root cause = anti-pattern in /app/frontend/app/(tabs)/invoice/preview/[id].tsx:45 — `if (loading && !inv) load();` invoked during render, which triggers setState inside render and re-enters load() on every render, preventing the promise from ever settling into the ‘data ready’ branch. Fix: move to `useEffect(() => { load(); }, [load]);`. Everything downstream of the preview (Share PDF from footer, sections, meta grid) could not be exercised because the screen never renders. Deprecated packages: none.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "invoice/preview/[id].tsx", "issue": "Preview screen stuck on ActivityIndicator forever — invoice-preview-screen never mounts. Anti-pattern `if (loading && !inv) load();` at line 45 calls setState during render → infinite render loop → load() promise never settles into `setInv/setLoading(false)` branch. Backend APIs verified fast (200 in <200 ms).", "testID": "invoice-preview-screen", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [
+      {"flow": "Invoice detail → Preview → Share PDF", "issue": "Cannot verify the auth-token PDF share fix because the preview screen never renders. shareGetFile() itself looks correct (passes Authorization header via getAuthToken() in /app/frontend/src/download.ts:34) — but its footer button is unreachable until the preview render loop is fixed.", "affected_testIDs": ["preview-invoice-btn", "invoice-preview-screen", "preview-download-btn"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "backend_matrix": {
+    "TestTaskEndTime.test_create_task_with_end_time": "PASS (POST /api/tasks returns time=09:00 & end_time=17:00)",
+    "TestTaskEndTime.test_get_task_returns_end_time": "PASS (GET /api/tasks?date=... echoes end_time)",
+    "TestTaskEndTime.test_patch_task_end_time": "PASS (PATCH /api/tasks/{id} updates end_time to 18:30)",
+    "TestTaskEndTime.test_cleanup": "PASS",
+    "TestInvoicePdf.test_pdf_returns_200_application_pdf": "PASS (Content-Type: application/pdf, body begins %PDF-)",
+    "TestInvoicePdf.test_pdf_without_auth_is_401": "PASS (unauth 401 — confirms the original ‘401 saved as .pdf’ was purely a missing header on the client)"
+  },
+  "frontend_matrix": {
+    "settings_save_hidden_on_load": "PASS (save-settings-btn absent, settings-clean present)",
+    "settings_save_appears_when_dirty": "PASS",
+    "settings_saved_badge_shows_after_save": "PASS (settings-saved-badge present)",
+    "settings_clean_returns_after_badge": "PASS (settings-clean re-renders within ~2.5 s)",
+    "shift_save_to_planner_button": "PASS (plan-shift-btn present)",
+    "shift_start_now_button": "PASS (start-shift-btn present)",
+    "shift_schedule_date_removed": "PASS (no schedule-date testID found)",
+    "planner_start_time_autoformat": "PASS ('0900' → '09:00')",
+    "planner_end_time_autoformat": "PASS ('1730' → '17:30')",
+    "planner_duration_hint": "PASS (task-duration-hint reads 'Shift duration: 8h 30m')",
+    "invoice_preview_screen_renders": "FAIL — stuck loading, testID never mounts",
+    "invoice_preview_sections_visible": "BLOCKED",
+    "invoice_preview_share_pdf_button": "BLOCKED",
+    "invoice_preview_footer_close": "BLOCKED"
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_33.json",
+    "/app/test_reports/pytest/iteration33_results.xml",
+    "/app/backend/tests/backend_iteration33_test.py"
+  ],
+  "action_items": [
+    "MAIN AGENT — CRITICAL: In /app/frontend/app/(tabs)/invoice/preview/[id].tsx replace the render-time call `if (loading && !inv) load();` (line 45) with `useEffect(() => { load(); }, [load]);` (or equivalent useFocusEffect). The current pattern loops indefinitely and prevents the preview from ever displaying — the entire iteration-33 headline feature is unusable in the web preview (and almost certainly in Expo Go / native builds too since RN doesn’t forgive setState-during-render either).",
+    "MAIN AGENT — after the render-loop fix, re-run: open any invoice → Preview → verify paper mock (header band / BILL TO / meta grid / line-item table / totals / notes / remit-to footer) — then tap Share PDF footer and confirm shareGetFile passes Authorization header (should already be correct in /app/frontend/src/download.ts:20-34)."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/(tabs)/invoice/preview/[id].tsx:45 — `if (loading && !inv) load();` is a React anti-pattern. Calling an async function that setState during render body triggers infinite re-renders and prevents the completion state from being observed by React’s reconciler. This is the root cause of the stuck spinner. Must be a useEffect (with useCallback dep) or useFocusEffect.",
+    "/app/frontend/src/utils/time.ts — formatTime24h looks solid: strips non-digits, inserts ':' after 2 digits, clamps hh<=23 and mm<=59; minutesBetween handles overnight (adds 24h); formatDuration returns 'Xh Ym'. Manual verification via UI: 0900→09:00, 1730→17:30, 8h30m hint rendered.",
+    "/app/frontend/src/download.ts:20-34 — shareGetFile now correctly attaches `Authorization: Bearer <token>` via getAuthToken() and deletes the file if the download did not return 2xx. Fixes the ‘401 body saved as .pdf’ regression at its source. Unable to run end-to-end because of the preview render bug, but code review is clean.",
+    "/app/backend/server.py TaskCreate/Task (lines 175-209) — end_time optional string field is present on both Create and full model, correctly persisted and returned. PATCH accepts a `dict` body which allows partial update of end_time — verified via test.",
+    "/app/frontend/app/(tabs)/settings.tsx:41-95 — savedSnapshot / dirty / justSaved lifecycle is correct: initial hide, appear on edit, green badge for ~2.2 s post-save, then clean pill. Nice UX detail: on every edit `if (justSaved) setJustSaved(false)` so the badge doesn’t stick after fresh edits.",
+    "/app/frontend/app/(tabs)/shift.tsx:386-402 — schedule DateInput removed as spec’d; footer now shows a two-button row (plan-shift-btn ghost + start-shift-btn primary). Save-to-planner defaults to today (no date picker exposed) per requirement.",
+    "/app/frontend/app/(tabs)/planner.tsx:535-558 — new modal exposes task-start-input + task-end-input as separate 24-hr fields with formatTime24h onChangeText, and task-duration-hint shows only when both are filled (nice conditional render)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration33_test.py (new, 6 tests, ~1.1 s)",
+    "/app/test_reports/pytest/iteration33_results.xml (new)",
+    "/app/test_reports/iteration_33.json (this report)"
+  ],
+  "success_rate": {"backend": "6/6 (100%)", "frontend": "10/13 UI checks PASS · 1 CRITICAL fail · 3 BLOCKED by that fail"},
+  "seed_data_creation": "Backend test created + deleted one TEST_it33 task (POST + PATCH + DELETE all clean). Invoice PDF test used an existing invoice (INV-1010 · TEST FE Participant · $267.56) — no new data created for the org.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The 6-test backend suite (backend_iteration33_test.py) is idempotent — safe to re-run. After the render-loop fix in preview/[id].tsx: (1) navigate directly to /invoice/preview/6a4d9c3da95d11cabc2bbb7c and expect [data-testid=invoice-preview-screen] to appear within ~2 s; (2) content selectors already known-good: text=TAX INVOICE, text=BILL TO, text=Service date, text=Plan type, testIDs preview-back-btn / preview-share-btn / preview-close-btn / preview-download-btn; (3) footer Share PDF tap should hit /api/invoices/{id}/pdf with Bearer token (verify Network tab or that expected file with %PDF- header downloads). Everything else in iteration 33 is already verified — Settings save-lifecycle, Shift buttons (no schedule-date), Planner start/end + duration hint, backend task.end_time round-trip, backend PDF regression.",
+  "rca_of_issue": "Preview stuck-loading RCA: /app/frontend/app/(tabs)/invoice/preview/[id].tsx line 45 uses `if (loading && !inv) load();` as a render-body fetcher. React re-renders the component after any setState call inside `load` (setLoading(true), then setInv, then setLoading(false)). Because the fetcher is called from render (not an effect), React can enter a render loop that never surfaces the resolved state to the DOM. Fix: swap to `useEffect(() => { load(); }, [load]);` (or `useFocusEffect(useCallback(() => { load(); }, [load]));` if you want a re-fetch on focus). No backend or auth work required — proven by curl round-trip to GET /api/invoices/{id} completing in <100 ms."
+}

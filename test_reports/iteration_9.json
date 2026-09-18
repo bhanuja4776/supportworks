@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 9 — LIFETIME OWNER + NDIS AI CODE ASSISTANT verified. Backend: 16/16 pytest passed (backend_iteration9_test.py). Lifetime seed: POST /api/auth/login with TEST_USER_EMAIL/admin returns 200 + token; GET /api/billing/membership returns {plan:'lifetime', is_active:true, status:'active', expires_at:'2999-01-01T00:00:00+00:00', auto_renew:false}; /auth/me confirms the user record. NDIS AI Assistant (GPT-4o via Emergent LLM key, grounded on the 25-item catalogue): (a) self-care weekday query returns real catalogue code 01_011_0107_1_1 with name/rate/unit, (b) community-access/shopping query returns 04_104_0125_6_1, (c) out-of-scope 'bake a chocolate cake' returns codes that are either empty OR filtered against catalogue (backend maps by code so invented codes are dropped) — no fake codes leaked, (d) multi-turn conversation with follow-up 'And on a Sunday?' correctly returns the Sunday variant 01_004_0107_1_1, (e) empty messages → 400. Non-lifetime demo user still sees Free plan + Stripe checkout URL from /billing/checkout. NDIS catalogue endpoint returns >=20 items. Regression: /dashboard/stats, /billing/plans (pro_monthly A$19.99, pro_yearly A$199), /auth/me 401 without token, /auth/logout all pass. Frontend (390x844 mobile web): 7/7 UI flows verified — (1) lifetime login → dashboard-screen loads, (2) 'NDIS Code Assistant' banner (testID=assistant-banner) is visible on dashboard, (3) tapping banner opens assistant-screen, (4) typing question in assistant-input and pressing assistant-send returns an assistant bubble AND a tappable code chip (testID=use-code-01_011_0107_1_1) within ~10s, (5) tapping the chip navigates to /invoice/new?presetCode=01_011_0107_1_1&presetDesc=Assistance%20With%20Self-Care%20Activities%20-%20Standard%20-%20Weekday%20Daytime&presetRate=67.56 (invoice prefill working), (6) /membership shows 'Full access — no fees, ever 🎉' status pill (testID=membership-status), a 'You have lifetime access' card, all 5 features listed, and NO subscribe-pro_monthly / subscribe-pro_yearly buttons rendered, (7) bottom 5-tab bar (Command / Clients / Scan / Invoices / Planner) is present on both /membership and /account with NO leaked extra tabs. Demo (non-lifetime) regression: TEST_DEMO_EMAIL / TEST_PASSWORD logs in, /membership renders both plan-pro_monthly and plan-pro_yearly cards. Auth regression: unauth users are redirected to /login. Confirmed biometric/PIN is optional — lifetime user's Account screen shows 'Set quick-unlock PIN' row (opt-in) and no lock overlay appears without a PIN.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web (global)", "issue": "'shadow*' style props deprecated on web — use 'boxShadow'. Non-blocking, carried from prior iterations."},
+      {"component": "RN Web (global)", "issue": "'props.pointerEvents' deprecated — use style.pointerEvents. Non-blocking, carried from prior iterations."},
+      {"component": "expo-notifications on web", "issue": "'Listening to push token changes is not yet fully supported on web' — expected on web preview, native builds unaffected."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration9_test.py",
+    "/app/test_reports/pytest/iteration9_results.xml"
+  ],
+  "action_items": [
+    "Carryover from iter-8 (not re-verified this round): Account → 'Log out' Alert on react-native-web is still a no-op — replace with Platform-gated window.confirm or custom Modal. Same applies to the Cancel-membership Alert.",
+    "(Cosmetic, non-blocking) The lifetime status card in membership.tsx currently gates on `active` — for lifetime, both the gradient and the icon (`infinite`) render correctly, so no fix needed there.",
+    "(Optional) Add EmailStr validation to RegisterBody/LoginBody/ForgotBody in server.py."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py — Lifetime seed on startup is IDEMPOTENT: if the email exists it updates plan/status/expires_at; if not it inserts a fresh user. Uses `datetime(2999,1,1,tzinfo=timezone.utc)` as far-future expiry. `_membership_out` computes is_active by comparing the tz-aware expiry to now → lifetime user correctly shows is_active:true.",
+    "backend/server.py — /api/ai/ndis-assistant is grounded correctly: (a) system prompt embeds the whole 25-item catalogue with code|name|category|rate|unit|tags, (b) STRICT JSON response schema {answer, codes:[code,...]} enforced, (c) backend post-filters by `if c in by_code` so any hallucinated code IDs are dropped from the response — the frontend can never receive a fake code. Multi-turn works via last-8-message transcript window.",
+    "backend/server.py — Assistant catches ```-fenced JSON and extracts the {..} region defensively (start/end brace search). Fallback: if JSON parse fails, `answer` becomes the raw text and codes=[] — safe default.",
+    "frontend/app/(tabs)/membership.tsx — Lifetime UI branch (`isLifetime = currentPlan === 'lifetime'`) is clean: renders the special lifetime card and completely bypasses the plans list / cancel button. Status text 'Full access — no fees, ever 🎉' matches spec.",
+    "frontend/app/(tabs)/assistant.tsx — KeyboardAvoidingView + ScrollView pattern is correct for RN mobile. Sends the full user/assistant history array (last state after appending the new user msg) to the backend so the multi-turn context is preserved. Code chips have testID=`use-code-<code>` and applyCode() navigates to /invoice/new with URL-encoded params — verified prefill works end-to-end.",
+    "frontend/app/(tabs)/index.tsx — assistant-banner is a real Pressable with distinctive brand-tinted styling; sits between Start Shift and Quick Actions — good IA placement."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration9_test.py (new — 16 tests: TestLifetimeOwner, TestNdisAssistant, TestRegression)",
+    "/app/test_reports/pytest/iteration9_results.xml (new — junit xml)",
+    "/app/test_reports/iteration_9.json (this file)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (7/7 flows)"},
+  "seed_data_creation": "None new. Lifetime seed already handled idempotently by backend startup. Demo user's Stripe checkout session created (unpaid, harmless).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run iter-9 backend tests: `pytest /app/backend/tests/backend_iteration9_test.py -v`. Lifetime credentials: TEST_USER_EMAIL / admin (seeded idempotently on backend startup — see server.py:_auth_indexes). AI assistant endpoint is POST /api/ai/ndis-assistant with {messages:[{role,content}]} → returns {answer:string, codes:[{code,name,rate,unit}]}. Frontend testIDs to hit: assistant-banner (on dashboard), assistant-screen, assistant-input, assistant-send, use-code-<code>, membership-screen, membership-status. Note: AI response can take 5–15s — set generous timeouts (>=30s) when waiting for use-code-* selectors. Lifetime membership view suppresses subscribe-* buttons entirely — do not assert their presence for that user."
+}

@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 12 — verified 8 new features/regressions end-to-end. Backend 21/21 passed (backend_iteration12_test.py) covering: PATCH /api/auth/me (name + picture with bearer token, persistence via GET, 401 without auth), settings favourite_codes round-trip (PUT then GET returns same list, multi-value update, cleanup), POST /api/ai/ndis-assistant (returns {answer,codes}), notes /api/notes/{date} PUT+GET round-trip with `text` field, invoice create regression. Frontend (mobile web 390x844, logged in as TEST_DEMO_EMAIL / TEST_PASSWORD) — ALL 5 flows PASSED: (1) ASSISTANT — tapping [data-testid=faq-cat-personal_care] loaded 5 category questions; [data-testid=shuffle-suggestions] reshuffled to 4 different suggestions; tapping a [data-testid=suggestion-*] chip fired POST /api/ai/ndis-assistant and 3 [data-testid=followup-*] items rendered in 2s. (2) ACCOUNT EDIT — [data-testid=edit-profile-btn] opens sheet with [data-testid=profile-name-input] + [data-testid=profile-save-btn]; name updated to 'TEST_iter12 Demo User' and reflected on account screen after save. (3) NDIS FAVOURITES — 25 [data-testid=star-*] buttons in picker; tapping star-01_011_0107_1_1, closing (Escape), and reopening picker showed [data-testid=fav-code-01_011_0107_1_1] in the ★ FAVOURITES section — persistence via PUT /api/settings verified. (4) NOTES web fallback — notes screen loads on web without crash; [data-testid=notes-input] accepts typing; toolbar renders mic-btn (1), add-photo-camera (1), 6× textcolor-*, 6× bgcolor-*. (5) CLIENT CONFIRMATION — save-client-btn now uses Alert (not celebration overlay): no 'Client added ✓' text detected on screen and client 'TEST_iter12 Client Alert' appears in participants list — confirmation Alert dismisses via web alert(). No red-screen errors. Only carryover RN-Web deprecation warnings (shadow*, pointerEvents, expo-notifications on web) — non-blocking.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web (global)", "issue": "'shadow*' style props deprecated on web — use 'boxShadow'. Non-blocking carryover from earlier iterations."},
+      {"component": "RN Web (global)", "issue": "'props.pointerEvents' deprecated on web — use style.pointerEvents. Reference: /app/frontend/src/components/Celebration.tsx:31 (Burst passes pointerEvents='none' as prop). Non-blocking."},
+      {"component": "expo-notifications on web", "issue": "'Listening to push token changes is not yet fully supported on web' — expected web-preview only warning."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration12_test.py",
+    "/app/test_reports/pytest/iteration12_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Add a stable testID (e.g. 'celebration-overlay') to the Celebration overlay so tests can positively distinguish celebration vs Alert. This iteration relied on absence of 'Client added ✓' text to prove the Alert path — brittle if E1 later changes the celebration message.",
+    "OPTIONAL: Migrate Burst's pointerEvents='none' prop to style.pointerEvents to silence the RN Web deprecation warning (carryover)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1744-1754 — PATCH /api/auth/me correctly gates on get_current_user (bearer token), strips whitespace on name, only persists provided fields (both name and picture optional), returns fresh user doc via _user_out. Verified: unauth request returns 401/403; token+name updates and persists on subsequent GET /api/auth/me; picture accepts base64 data URI.",
+    "server.py:1044-1048 — PUT /api/settings uses an $set upsert on a single 'business' doc and returns the merged DEFAULT_SETTINGS+doc. Because it accepts a raw dict and only $sets provided keys, favourite_codes list is stored and returned faithfully. NOTE: multiple concurrent PUTs from different clients would race — non-critical for a single-tenant business.",
+    "assistant.tsx:39-49 — selectCategory + shuffle correctly use pickRandom with the current category's question pool (or ALL_FAQ_QUESTIONS if no category); the `asked` exclusion list prevents re-showing recently-asked questions. QUESTION_CATEGORY map (lines 15-17) drives smart follow-ups based on the asked question's category, falling back to the currently active category.",
+    "assistant.tsx:82,161-177 — Intro suggestions render ONLY when messages.length<=1 (showIntro). After a Q&A round, the intro block is hidden and the 'You might also ask' followUps block (lines 148-158) takes over. This is correct UX but means the shuffle+category chips only affect the intro suggestions — after the first message they no longer visibly shuffle. E1 may want to consider showing category chips in a persistent bar (which is currently done) plus keeping shuffle visible.",
+    "account.tsx:26-42 — openEdit prefills name+photo from current user; saveProfile gates on empty name (Alert), calls updateProfile (AuthContext → PATCH /api/auth/me), then closes sheet + shows 'Profile updated' Alert. Restores savingProfile in finally so button re-enables on error. Good.",
+    "ClientFormSheet.tsx:75-95 — save() now uses Alert.alert instead of celebrate(). Order: onSaved() + onClose() BEFORE the Alert so the sheet closes and the list refreshes underneath the confirmation dialog. Alert wording differs for create vs edit ('Client added' / 'Changes saved') — no celebration overlay is triggered. Verified on web: no 'Client added ✓' celebration text appears; client is persisted and visible in list.",
+    "invoice/new.tsx:49,113,320-380 — favourites hydrated on mount from GET /api/settings, PUT'd on every toggle. Picker renders a ★ FAVOURITES section at the top when favourites exist, with fav-code-{code} rows and unstar-{code} buttons. The main list also shows star-{code} on each row so users can favourite from anywhere. Verified round-trip through close/reopen.",
+    "notes.tsx:14,28 — Web path uses PlainNoteFallback (TextInput with testID='notes-input') from RichNoteEditor.tsx while native uses the WebView-based RichNoteEditor. All toolbar buttons (mic-btn, add-photo-camera, textcolor-*, bgcolor-*) render in both paths — verified 1+1+6+6 present on web. save() sends `text` (HTML on native, plain on web) via PUT /api/notes/{date}. Good graceful degradation.",
+    "NotesCard.tsx:9,63 — stripHtml strips <tags> and &nbsp; before showing dashboard preview, so raw HTML from the rich editor doesn't leak. Preview line 116 uses stripped text with numberOfLines=3. Verified: no raw tags in preview."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration12_test.py (new — 21 tests)",
+    "/app/test_reports/pytest/iteration12_results.xml (new — junit)",
+    "/app/test_reports/iteration_12.json (this file)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% (5/5 flows: assistant category+shuffle+suggestion→answer→follow-ups; account edit name; invoice favourites persistence; notes web fallback; client save via Alert)"},
+  "seed_data_creation": "Created and then CLEANED UP: (a) 'TEST_iter12 Demo User' name change on TEST_DEMO_EMAIL — restored to 'Demo' post-test. (b) favourite_codes settings PUT — cleared to [] via cleanup test and frontend unstar. (c) Test invoice — deleted via test. (d) TEST_iter12 note on 2026-01-14 — cleared to empty. (e) 'TEST_iter12 Client Alert' client — deleted via cleanup API call. NO test data remains in the system.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run `EXPO_PUBLIC_BACKEND_URL=https://careworker-dash.preview.emergentagent.com pytest /app/backend/tests/backend_iteration12_test.py -v` — pytest doesn't inherit the shell env by default so you MUST prefix the export or use `env EXPO_PUBLIC_BACKEND_URL=... pytest ...`. Login flow on web preview: fill placeholder 'you@example.com' + input[type=password] then click get_by_text('Sign In', exact=True). Modal close on invoice picker: page.keyboard.press('Escape') works via Modal's onRequestClose. React Native Alert on web renders as window.alert() and auto-blocks — playwright will dismiss it automatically when clicking away or navigating; the celebration overlay is text-detectable via 'Client added ✓' / 'Task added ✓' / 'Invoice created ✨' / 'Notes saved ✓' markers. Notes screen (/notes) on web uses PlainNoteFallback (testID=notes-input) — do NOT test inline image insertion or per-word text colouring on web (native-only).",
+  "rca_of_issue": "N/A — no defects found."
+}

@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 3 (clients extended fields, NDIS-compliant invoices w/ dates + PATCH /sent, overdue dashboard alert, Credentials CRUD, Today's Notes upsert + rich style + photos) fully validated. Backend: 50/50 pytest tests pass (11 iter-1 + 21 iter-2 + 18 new iter-3). New tests cover: clients POST/GET/overview persist company/email/address/plan_manager; invoices POST/GET carry client_company/client_address/client_email/issue_date/due_date/sent_date, PATCH /api/invoices/{id}/sent sets sent_date to today (and 404 for unknown id); GET /api/invoices/{id}/pdf still returns application/pdf w/ %PDF magic; GET /api/dashboard/stats returns overdue_count/overdue_amount and correctly excludes paid past-due and future-due-unpaid; Credentials CRUD (POST/GET sorted by expiry_date asc/PATCH/DELETE with 404); Today's Notes GET returns defaults (text='', font='system', font_size=16, text_color=#F0F9FF, bg_color=#0A1E24, photos=[]) and PUT+GET persists text/font/font_size/text_color/bg_color/photos array. Frontend (mobile viewport 390x844): Dashboard renders Notes card (record-btn + fullscreen-btn + preview + inline input) and Tools row includes 'Certs & Insurance' → /credentials. Overdue alert 'X overdue invoice · $Y — follow up' appears when overdue invoice exists and taps through to /invoices. /credentials screen: type chips (Certificate/Insurance/License), title/issuer/expiry inputs, camera+gallery photo buttons, save-credential-btn all render; UI end-to-end save of TEST_UI_PL Insurance verified in list. /notes editor: notes-input, mic-btn, add-photo-camera/lib, font-inc/dec, font-system/serif/mono, 6 text-color + 6 bg-color swatches, save-notes-btn all present and functional; save round-trips to backend. Add-client modal shows all new fields (name/company/ndis/email/phone/address/plan-manager) and saves. Client detail shows billing/paid/pending summary and 'Invoices' section renders new invoice with correct pre-fill. Invoice builder has Company/Billing Address/Billing Email/Issue Date/Due Date fields. Invoice detail shows 'Issued', 'Sent: —', 'Due:', Mark paid, Send PDF. Voice/photo capture and PDF share are DEVICE-ONLY (Whisper transcribe API + credential base64 image save independently verified via backend tests). Local push reminders for invoice due dates are DEVICE-ONLY (expo-notifications on web). Bug fix applied: /app/frontend/app/(tabs)/clients.tsx was missing `ScrollView` import causing 'ReferenceError: ScrollView is not defined' when the add-client modal rendered — fix added to imports and expo restarted; re-tested with zero console errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/credentials/{id}", "issue": "Accepts arbitrary dict body without Pydantic partial-update model (id/_id popped only). Consider CredentialUpdate model."},
+      {"endpoint": "GET /api/invoices/{id}/pdf & /api/credentials/{id}", "issue": "Invalid non-24-hex id still returns 500 (uncaught bson.errors.InvalidId). Wrap ObjectId() in try/except and raise 400. (Carried over from iter 2, not blocking.)"},
+      {"endpoint": "GET /api/dashboard/stats", "issue": "overdue detection uses string date compare (due_date < today[:10]). Works because both are ISO YYYY-MM-DD but breaks if due_date is stored in a different format (e.g. ISO with time). Currently safe because invoices only store YYYY-MM-DD."},
+      {"endpoint": "PUT /api/notes/{date}", "issue": "date path param is not validated as YYYY-MM-DD — any string becomes a mongo _id. Consider a simple regex validator."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/(tabs)/clients.tsx", "issue": "Missing `ScrollView` import while used inside add-client modal caused 'ReferenceError: ScrollView is not defined' and broke the entire Clients screen on tab focus. FIXED by testing agent (added ScrollView to the react-native import list).", "testID": "new-client-name / add-client-btn", "priority": "HIGH-FIXED"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (RN Web)", "issues": ["Persistent (harmless) console warnings: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents deprecated (use style.pointerEvents)'. Carried over from iterations 1 & 2."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/backend_iteration2_test.py",
+    "/app/backend/tests/backend_iteration3_test.py",
+    "/app/test_reports/pytest/iteration3_results.xml"
+  ],
+  "action_items": [
+    "(Optional cleanup) Wrap ObjectId(id) parsing in try/except across GET/PATCH/DELETE endpoints and raise 400 for malformed ids instead of 500 (still open from iter 2).",
+    "(Optional cleanup) Add Pydantic partial-update models for PATCH /credentials/{id}, PATCH /clients/{id}, PATCH /reminders/{id}, PATCH /tasks/{id}.",
+    "(Optional) Add YYYY-MM-DD path validator on GET/PUT /api/notes/{date} to prevent arbitrary string _id keys."
+  ],
+  "critical_code_review_comments": [
+    "server.py Invoice model correctly adds client_company/client_address/client_email/issue_date/due_date/sent_date with defaults so PDF & existing GETs stay backward compatible.",
+    "PATCH /api/invoices/{id}/sent correctly sets sent_date to today (UTC, ISO date-only) and returns full updated doc (404 on unknown id).",
+    "dashboard_stats overdue detection filters unpaid AND due_date < today — paid or future-due excluded. Verified end-to-end.",
+    "Credential model uses expiry_date sort ascending — earliest expiry first (good UX for renewal prompts).",
+    "DailyNote uses date string as _id (upsert-friendly) and DEFAULT_NOTE is spread AFTER stored doc in GET, so we correctly fall back to defaults for missing fields. Good.",
+    "clients.tsx missed importing ScrollView — HIGH severity because it hard-crashed the Clients tab. Fixed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration3_test.py (new, 18 tests covering all iter-3 endpoints incl. regressions)",
+    "/app/frontend/app/(tabs)/clients.tsx (added missing ScrollView import)"
+  ],
+  "success_rate": {"backend": "100% (50/50 across all iterations, 18/18 iter-3)", "frontend": "100% of iter-3 flows tested on 390x844 after ScrollView fix"},
+  "seed_data_creation": "Iter-3 pytest fixtures create TEST_I3_Client, related paid/pending/overdue TEST invoices, TEST_First Aid Cert + TEST_PL Insurance credentials, daily notes for 2026-01-01 and 2026-01-15. Fixtures teardown deletes all created invoice/credential/client ids. Notes docs remain (no delete endpoint). During UI verification an extra UI_ITER3_Bob client + overdue invoice were created via page.request and cleaned up in-run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Base URL: EXPO_PUBLIC_BACKEND_URL (https://careworker-dash.preview.emergentagent.com). Run: `export $(grep -v '^#' /app/frontend/.env | xargs) && pytest /app/backend/tests/ -v`. All 50 tests pass. iter-3 tests live in backend_iteration3_test.py (module-scoped session fixture w/ teardown). Whisper (transcribe) and expo-image-picker photo capture are DEVICE-ONLY on Expo Go / native build; the underlying API endpoints (POST /api/transcribe accepts audio_base64, POST /api/credentials + PUT /api/notes accept base64 image arrays) are verified. Local push notification scheduling for overdue reminders is DEVICE-ONLY (expo-notifications) and unavailable on web preview — dashboard overdue banner is the web-testable surface and is confirmed. If you re-run the frontend flow, POST an unpaid invoice with due_date<today first to make the overdue-alert testID visible.",
+  "rca_of_issue": "Clients tab crash: Files imported React Native primitives on line 2-4 but omitted ScrollView while adding a ScrollView wrapper inside the add-client modal in iter-3. Metro bundler does not fail (JSX only fails at render), so the tab loaded but a ReferenceError was thrown on modal render, unmounting the whole Clients component and leaving the screen stuck in the loading state. Fix: added ScrollView to the react-native named import list. Verified by reopening the modal and successfully filling all new-client-* testIDs. No other files had the same pattern (grepped for `<ScrollView` without matching import elsewhere)."
+}

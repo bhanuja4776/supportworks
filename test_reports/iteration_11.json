@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 11 — verified E1's three bug fixes end-to-end. Backend 19/19 passed (backend_iteration11_test.py) covering task/client/invoice create + credentials with file_type='pdf'/file_name + /api/transcribe with a real 0.5s WAV (Whisper returned success:true). Frontend (mobile web 390x844, logged in as TEST_DEMO_EMAIL / TEST_PASSWORD): (a) BUG3a — Planner → add-task-fab → save-task-btn ⇒ 'Task added ✓' celebration overlay rendered and new task appears in list. (b) BUG3b — Clients tab → add-client-btn → save-client-btn ⇒ 'Client added ✓' celebration and 'TEST_iter11 PW Client' visible in participants list. (c) BUG3c — /invoice/new → generate-invoice-btn ⇒ 'Invoice created ✨' celebration seen and router.back() executed. (d) BUG1 — Credentials Add Document modal now shows three attach buttons: cred-camera ('Photo'), cred-gallery ('Gallery'), cred-file ('PDF / File'). Backend also confirmed the credentials POST accepts file_type='pdf' and file_name and returns them on GET. Regression: /api/dashboard/stats, /outstanding, /upcoming, /invoices, /clients, /credentials all 200. No red screens, no crashes. Only carryover RN Web deprecation warnings (shadow*, pointerEvents) and the expo-notifications web-only warning — non-blocking.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web (global)", "issue": "'shadow*' style props deprecated on web — use 'boxShadow'. Non-blocking carryover from earlier iterations."},
+      {"component": "RN Web (global)", "issue": "'props.pointerEvents' deprecated on web — use style.pointerEvents. Reference: /app/frontend/src/components/Celebration.tsx:31 (Burst passes pointerEvents='none' as prop). Non-blocking."},
+      {"component": "expo-notifications on web", "issue": "'Listening to push token changes is not yet fully supported on web' — expected web-preview only warning."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration11_test.py",
+    "/app/test_reports/pytest/iteration11_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Add a stable testID (e.g. 'celebration-overlay') to the Celebration overlay in /app/frontend/src/components/Celebration.tsx so automated tests don't have to text-scrape the message. Currently detected by searching page text for 'Task added' / 'Client added' / 'Invoice created' which is brittle.",
+    "OPTIONAL (carryover): migrate Burst's pointerEvents='none' prop to style.pointerEvents to silence the RN Web deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "planner.tsx:44-55 — addTask now wraps api.createTask in try/catch, calls celebrate('Task added ✓', {sound:true}) on success, and Alert.alert on failure. State reset (title/time/type/modal) happens BEFORE celebrate so the sheet closes and the celebration overlay is visible on top of the list — good UX.",
+    "ClientFormSheet.tsx:77-94 — save() correctly gates on name.trim(), calls onSaved()+onClose() then celebrate() (so parent list refreshes underneath the overlay). Both create and edit paths surface Alert.alert on error. isEdit branch reuses the same celebrate call with 'Client updated ✓'.",
+    "invoice/new.tsx:112-156 — save() shows loading state, catches errors with Alert.alert, calls celebrate() then router.back(). The reminder scheduling is wrapped in its own try/catch so a notification-permission failure never blocks the success feedback. setSaving(false) is only invoked in the catch branch — success path relies on unmount from router.back(), which is correct.",
+    "credentials.tsx:54-67 — pickDocument uses expo-document-picker with type=['application/pdf','image/*'], reads base64 via FileSystem, detects PDF by mimeType or filename extension, then stores file_type + file_name. Error path Alerts with a friendly message. openPdf (line 69-82) writes to cache and uses expo-sharing (fallback to Linking) — appropriate native-only path (won't run on web preview but doesn't crash).",
+    "server.py:1299-1333 — Credential model now includes file_type ('image'|'pdf') defaulting to 'image' and file_name (default ''). CredentialCreate mirrors these fields. Verified via backend test that POST accepts + returns both, and they persist through the list endpoint.",
+    "server.py:245-267 — /api/transcribe correctly decodes base64, restricts format to the Whisper-allowed set (mp3/mp4/mpeg/mpga/m4a/wav/webm — defaults to m4a if invalid), writes to a NamedTemporaryFile, calls OpenAISpeechToText.transcribe, and cleans up in a finally block. Verified with a real 16 kHz mono 0.5s WAV containing a 440 Hz tone — returned {success:true, text:''} (Whisper appropriately outputs empty text for a pure tone — 200 status validates the integration).",
+    "Celebration.tsx:31,111-120 — overlay is rendered only when visible=true and auto-dismisses via withDelay(1400,…) → runOnJS(hide). No testID present on the overlay/badge/message — recommend adding testID='celebration-overlay' to line 112 for future test stability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration11_test.py (new — 19 tests)",
+    "/app/test_reports/pytest/iteration11_results.xml (new — junit)",
+    "/app/test_reports/iteration_11.json (this file)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% (4/4 flows: task-create+celebration+list, client-create+celebration+list, invoice-create+celebration, credentials modal shows cred-file PDF/File button alongside cred-camera+cred-gallery)"},
+  "seed_data_creation": "Created and then deleted the following via automated tests: 1 task on 2026-01-15, 1 client 'TEST_iter11 Client' (backend test path), 1 invoice (backend test path), 1 credential 'TEST_iter11 Public Liability'. Frontend playwright run left the following live records that E1 may want to clean: task 'TEST_iter11 PW task' on 2026-07-04, client 'TEST_iter11 PW Client', 1 invoice with rate=100 qty=1 and blank description.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/backend_iteration11_test.py -v` (all read-only + create/cleanup). The Celebration overlay has NO testID — detect it by searching page content for the exact message strings ('Task added ✓', 'Client added ✓', 'Client updated ✓', 'Invoice created ✨', 'Invoice updated ✨', 'Document saved ✓'). Overlay auto-hides after ~1.7s (180ms fade-in + 1400ms delay + 300ms fade-out), so poll every 200-250ms right after clicking the save button. Login: TEST_DEMO_EMAIL / TEST_PASSWORD (fill via placeholder 'you@example.com' and input[type=password]). Direct route to credentials: /credentials. Direct route to new invoice: /(tabs)/invoice/new. VoiceField's inner TextInput is not directly reachable by `[data-testid=item-desc-0] input` — invoice save still works with empty description."
+}

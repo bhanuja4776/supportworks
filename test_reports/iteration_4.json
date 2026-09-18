@@ -1,0 +1,56 @@
+{
+  "summary": "Iteration 4 fully validated. Backend: 74/74 pytest tests pass (11 iter-1 + 21 iter-2 + 18 iter-3 + 24 new iter-4). New iter-4 tests cover Shifts (POST /api/shifts/start creates draft invoices with shift_id and pre-filled client fields; second call while active reuses same shift; GET /api/shifts/active returns shift + drafts + shift-linked receipts; PATCH /api/shifts/{id}/end sets status=ended), Client Documents (POST/GET filtered by client_id/DELETE), Invoice PUT edit (recomputes subtotal=$212.58/gst=$21.26/total=$233.84 for 3×67.56 + 10×0.99; draft→unpaid persists), Invoice POST /duplicate (new invoice_number, status=unpaid, issue_date=today, sent_date cleared, items+client copied) + 404 on unknown, Receipts (shift_id + archived fields persist on POST + GET), Dashboard stats keys present (NOTE: drafts are counted as unpaid/outstanding by current status!='paid' logic — reported per spec, not failed), Word .docx export (correct mime application/vnd.openxmlformats-officedocument.wordprocessingml.document, starts with PK zip magic, >500 bytes), Register-push with placeholder EMERGENT_PUSH_KEY returns 500 handled error and server stays healthy (GET / after still 200), Regression on ndis-codes/settings/tasks/reminders/reports-summary/reports-export/client-overview all pass. Frontend (390x844 mobile viewport): Dashboard start-shift-cta present → navigates to shift screen; selecting a client and tapping start-shift-btn creates 1 draft (verified via draft- testIDs), end-shift-btn + shift-add-receipt appear, tapping draft opens invoice detail with DRAFT banner + edit-invoice-btn + duplicate-invoice-btn visible; Vault (receipts-screen) row expands on tap to reveal view-original-* which opens original-image-modal; Templates screen → tap template-report opens Progress Report sheet with both generate-report-btn (PDF) and generate-report-docx-btn (Word) visible; Client detail add-doc-btn opens document modal with doctype chip (Service Agreement/Consent/Plan/Document), doc-title input, doc-camera + doc-gallery photo buttons, and save-doc-btn; Invoice /invoice/new builder shows Company/Organisation, Billing Address, Billing Email, Issue Date, Due Date fields (visible in screenshot, though testIDs use different names than the review-request hint). No pageerror observed; only harmless RN-web deprecation warnings (shadow* / props.pointerEvents) and an expected expo-notifications web-limitation warning. Device-only flows (Whisper transcribe, expo-image-picker camera capture, PDF/Word/Excel share via expo-sharing, push send with real key) were verified at API level only.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/dashboard/stats", "issue": "outstanding + unpaid_count include DRAFT invoices (logic is status!='paid'). Per review request this is reported behaviour, not a failure. Consider excluding drafts from outstanding to avoid inflating the dashboard when drafts sit against active shifts."},
+      {"endpoint": "PATCH /api/invoices/{id}/status & POST /api/invoices/{id}/duplicate & PUT /api/invoices/{id}", "issue": "Invalid non-24-hex id still returns 500 (uncaught bson.errors.InvalidId). Same pattern for /shifts/{id}/end and /client-documents/{id}. Wrap ObjectId() in try/except and return 400. (Carried from iter 2/3.)"},
+      {"endpoint": "POST /api/shifts/start", "issue": "Called repeatedly while active shift exists, will ADD more draft invoices for the same client_ids (no dedupe). Not a bug per spec (spec: 'reuses the active shift') but worth confirming intended UX."},
+      {"endpoint": "PUT /api/invoices/{id}", "issue": "InvoiceCreate body is a FULL replacement — it will overwrite sent_date and any recurrence flags to defaults. Consider a partial-update model or preserve unchanged server fields."},
+      {"endpoint": "POST /api/register-push", "issue": "With placeholder key returns 500 as expected. Behaviour is correct for MVP; ensure production sets EMERGENT_PUSH_KEY before Enable Push."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (RN Web)", "issues": ["Harmless console warnings persist: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents' deprecated (use style.pointerEvents). Non-blocking. Carried from earlier iterations.", "expo-notifications logs 'Listening to push token changes is not yet fully supported on web' — expected on web preview."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/backend_iteration2_test.py",
+    "/app/backend/tests/backend_iteration3_test.py",
+    "/app/backend/tests/backend_iteration4_test.py",
+    "/app/test_reports/pytest/iteration4_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Exclude status=='draft' from outstanding/unpaid_count in /dashboard/stats to avoid inflated numbers while shifts are open.",
+    "(Optional cleanup, carried from prior iters) Wrap ObjectId(id) parsing in try/except across GET/PATCH/PUT/DELETE endpoints and return 400 for malformed IDs (currently 500).",
+    "(Optional) Introduce InvoiceUpdate (partial) model for PUT /api/invoices/{id} to avoid clobbering sent_date / recurrence when editing.",
+    "(Optional) Consider preventing duplicate draft invoices when POST /api/shifts/start is called again with overlapping client_ids on an active shift."
+  ],
+  "critical_code_review_comments": [
+    "server.py shifts/start correctly detects active shift and reuses it (line 972-979); creates one draft Invoice per client_id with shift_id + prefilled client_name/company/address/email/participant_ndis_number and status='draft'; also updates shift.invoice_ids atomically via $push $each.",
+    "GET /api/shifts/active returns shift/None + invoices matching shift_id + receipts matching shift_id in a single call — good for the shift screen.",
+    "PUT /api/invoices/{id} recomputes totals via compute_invoice_totals (mutates item.amount in-place) — verified 212.58 / 21.26 / 233.84 in tests.",
+    "POST /invoices/{id}/duplicate correctly clones src, mints a new invoice_number, resets status=unpaid, issue_date=today, sent_date=''. sent_date not cleared previously would have leaked — handled.",
+    "POST /reports/docx uses python-docx to build a valid .docx (zip); response starts with PK\\x03\\x04 and correct mime — verified.",
+    "POST /register-push maps 401 from Emergent to 500 (misleading — 401 usually indicates key issue; returning 401 or 503 would be more accurate). Currently review requires 500 so kept as-is.",
+    "Receipt model adds shift_id + archived defaults ('' / False) — backward compatible.",
+    "shift.tsx has proper testIDs (shift-screen/start-shift-btn/end-shift-btn/shift-add-receipt/draft-*/shiftrec-*/shiftclient-*).",
+    "client/[id].tsx has full Documents section with add-doc-btn + doctype chips + camera/gallery + save + delete and view-original modal — all testIDs wired.",
+    "vault.tsx correctly reveals view-original-* + del-receipt-* on card expand; original-image-modal opens fullscreen. Good.",
+    "templates.tsx: only 'report' key opens the modal (invoice → router.push, expense → xlsx share). PDF & DOCX buttons both wired to /reports/pdf and /reports/docx respectively."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration4_test.py (new, 24 tests covering all iter-4 endpoints + regressions)"
+  ],
+  "success_rate": {"backend": "100% (74/74 across all iterations, 24/24 iter-4)", "frontend": "100% of iter-4 flows validated on 390x844 mobile viewport"},
+  "seed_data_creation": "Iter-4 pytest fixture creates TEST_I4_ShiftClientA/B clients, associated draft/finalised invoices, TEST_UI4_Merchant receipts (one linked to shift, one archived), one test client-document (Service Agreement + PNG base64), one test task and one test reminder. All test data is deleted in module teardown (shifts ended, invoices/receipts/tasks/reminders/documents/clients cascade-deleted). A single TEST_UI4_Merchant receipt was seeded via page.request during frontend testing to populate the Vault; it remains and can be cleaned by a subsequent run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Base URL: EXPO_PUBLIC_BACKEND_URL=https://careworker-dash.preview.emergentagent.com. Run all tests: `export $(grep -v '^#' /app/frontend/.env | xargs) && pytest /app/backend/tests/ -v --tb=short`. Iter-4 tests: backend_iteration4_test.py (module fixture w/ teardown). Notes: (1) `test_end_any_prior_active_shift` and `test_start_shift_while_active_reuses_shift` are ordered — if you run subsets of tests, always run TestShifts as a class. (2) Register-push placeholder key: expected 500/502 — do NOT treat as failure. (3) Dashboard NOTE: drafts currently ARE counted in outstanding; if you change that, update `test_stats_returns_expected_keys`. (4) All device-only flows (voice, camera, push send with real key, expo-sharing) verified via backend endpoints only. (5) Invoice builder placeholder testIDs differ from spec hint — actual builder does have Company/Address/Email/Issue/Due fields (visually verified in screenshot).",
+  "rca_of_issue": "N/A — no issues found requiring RCA in iteration 4. All new endpoints and UI flows work as specified."
+}

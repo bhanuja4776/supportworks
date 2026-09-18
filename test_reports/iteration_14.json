@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 14 — Verified Phase 0 (auth enforcement + org_id multi-tenant isolation) and Phase 1 (TOTP 2FA, immutable audit log, rate limiting). Backend 30/30 PASSED (backend_iteration14_test.py). Frontend: TEST_DEMO_EMAIL login → dashboard → account → /security (2FA setup screen with QR code + secret + enroll-code input) → /audit-log (org-scoped activity trail renders with created/deleted entries + timestamps + IP). Details: (A) AUTH ENFORCEMENT — 15/15 protected GET endpoints return 401 without a Bearer token (/clients, /invoices, /receipts, /expenses, /tasks, /credentials, /reminders, /dashboard/{stats,upcoming,outstanding}, /settings, /reports/summary, /notes/2026-07-04, /shifts/active, /audit-log). Bad token → 401. Public NDIS catalogue endpoints (/ndis-codes, /ndis-catalogue, /ndis-catalogue/version) correctly remain unauthenticated (200). (B) DATA MIGRATION — owner TEST_USER_EMAIL has 3 migrated clients (>=2 required). (C) ORG ISOLATION — demo creates client X → demo sees X, owner does NOT; owner GET /clients/X → 404; owner PATCH /clients/X → 404; demo's client X still intact after owner PATCH attempt; owner DELETE /clients/X returns 200 but is a NO-OP (data intact — verified via demo GET). Owner creates invoice Y → demo does NOT see it in list; demo GET /invoices/Y → 404; demo DELETE /invoices/Y returns 200 no-op — owner's invoice still intact. All cross-tenant reads/writes are firewalled at the query layer via _oid_org(id, org). (D) TOTP 2FA — full flow verified with a NEWLY REGISTERED throwaway account: POST /auth/2fa/setup returns {secret, otpauth_url, qr_data_url(base64 PNG)}; TOTP code from pyotp verifies enrollment → returns 8 backup codes; POST /auth/login now returns {two_factor_required:true, challenge_id} (no token); POST /auth/2fa/verify-challenge with TOTP code → returns {token, user, used_backup_code:false}; a backup code also works and is SINGLE-USE (2nd attempt with same code returns 401); POST /auth/2fa/disable with valid TOTP disables it; subsequent login returns token directly (no challenge). (E) AUDIT LOG — POST /clients as demo → GET /audit-log returns entry with method/path/status/ts and no cross-org user_id overlap with owner's log. (F) RATE LIMITING — 12 rapid POST /auth/login attempts to a bogus email returns 429 as expected (limiter fires after 10/min). (G) FRONTEND — demo login lands on dashboard (NDIS COMMAND CENTER visible), Account > Two-factor authentication renders 'Set up two-factor auth' button → tapping loads QR code image + base32 secret + enroll-code TextInput; Account > Security activity log renders /audit-log screen with the full trail (Created/Deleted Client/Invoice events, DD/MM/YYYY dates, HH:MM am/pm, client IP). One minor issue found (DELETE endpoints 200 vs 404 on cross-org) — not a data leak, only an info-leak/UX inconsistency.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/clients/{id}", "issue": "Returns 200 {\"success\":true} even when the resource does not exist in the caller's org (e.g., cross-tenant delete attempt). Data isolation is preserved (deleted_count=0, resource untouched), but the response should be 404 to (a) match GET/PATCH behaviour and (b) avoid leaking existence info to other tenants. Fix: check res.deleted_count == 0 and raise HTTPException(404). server.py:1107-1109."},
+      {"endpoint": "DELETE /api/invoices/{id}", "issue": "Same as above — returns 200 unconditionally instead of 404 on cross-org / missing id. Data protected via _oid_org, but response is inconsistent. server.py:708-711."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web (global)", "issue": "'shadow*' style props deprecated on web — use 'boxShadow'. Non-blocking carryover."},
+      {"component": "Celebration Burst", "issue": "props.pointerEvents deprecated on web — use style.pointerEvents. Reference: /app/frontend/src/components/Celebration.tsx:34. Non-blocking carryover."},
+      {"component": "expo-notifications (web)", "issue": "'Listening to push token changes is not yet fully supported on web' — expected web-preview only warning; native builds unaffected."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration14_test.py",
+    "/app/test_reports/pytest/iteration14_results.xml"
+  ],
+  "action_items": [
+    "MINOR: In server.py, make DELETE /clients/{id} and DELETE /invoices/{id} check delete_one().deleted_count and raise 404 when 0. Currently they return 200 for missing-or-other-org resources, which is inconsistent with GET/PATCH (which correctly return 404). Data is not exposed — this is a response-contract fix only.",
+    "OPTIONAL: Same 200-vs-404 review can be applied to other DELETE endpoints (receipts, expenses, tasks, credentials, reminders, client-documents) for consistency.",
+    "OPTIONAL: RN Web deprecation warnings — migrate 'shadow*' → boxShadow and Burst's pointerEvents prop → style.pointerEvents (carryover from iteration 13)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:240-261 — get_current_user rejects requests without a valid Bearer token (401) and current_org resolves user.org_id (falls back to user_id). Verified 15 protected GETs return 401 unauth.",
+    "server.py:264-266 — _oid_org(id, org) helper enforces org scope on every ObjectId query. Consistently used across all mutation endpoints (create/get/patch/delete for clients, invoices, receipts, expenses, tasks, credentials, reminders, etc.). This is the core isolation primitive and works correctly.",
+    "server.py:2168-2196 — Multi-tenant migration on startup is idempotent: backfills user org_id, assigns ownerless data to Drew's org for 9 collections, re-keys legacy singleton settings + daily_notes. Verified owner still has 3 migrated clients.",
+    "server.py:1889-1906 — POST /auth/login: rate limited to 10/min, sets two_factor_required + challenge_id when user has 2FA enabled, otherwise issues session token. No leak of the session token when 2FA is required. Verified.",
+    "server.py:2036-2123 — Full TOTP flow: setup generates base32 secret + otpauth URI + QR PNG (base64); verify-enrollment activates 2FA and returns 8 hashed backup codes; verify-challenge accepts TOTP or a single-use backup code (backup codes popped from list on use). All verified end-to-end.",
+    "server.py:2367-2377 — GET /audit-log filters by org, sorts by ts desc, strips _id and serializes ts to ISO. Verified: demo's audit log does NOT include owner's user_id entries.",
+    "server.py:2389-2417 — audit_middleware appends immutable entries for POST/PUT/PATCH/DELETE under /api on 2xx/3xx responses; skips auth-adjacent paths (login/register/session/2fa/forgot/reset/webhook). Records method/path/status/user_id/org_id/ip/ts. No update or delete route exists → append-only guarantee holds.",
+    "MINOR — server.py:708-711 delete_invoice and server.py:1107-1109 delete_client don't check delete_one().deleted_count. Returns {success:true} even on 0-match. Data isolation is preserved (query is org-scoped) but the API contract is inconsistent with GET/PATCH which return 404 for cross-org access."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration14_test.py (new — 30 tests)",
+    "/app/test_reports/pytest/iteration14_results.xml (new — junit)",
+    "/app/test_reports/iteration_14.json (this file)"
+  ],
+  "success_rate": {"backend": "100% (30/30)", "frontend": "100% (5 flows: email/password login, dashboard render, /security 2FA setup screen with QR + secret + enroll input, /audit-log renders org-scoped trail, Account row navigation)"},
+  "seed_data_creation": "Created and cleaned up per test: (a) demo client 'TEST_iter14_isolate_*' — deleted at end of test. (b) owner invoice for TEST_iter14 — deleted at end of test. (c) demo audit-trail client 'TEST_iter14_audit_*' — deleted. (d) throwaway 2FA account 'TEST_iter14_2fa_*@example.com' — REMAINS in DB with 2FA disabled at end (safe; disposable email). (e) bogus rate-limit email TEST_iter14_rl_*@example.com — never registered, only used to trigger 429s.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend tests: `EXPO_PUBLIC_BACKEND_URL=https://careworker-dash.preview.emergentagent.com pytest backend/tests/backend_iteration14_test.py -v` from /app. pyotp is installed (backend venv). Frontend note: after login, TabNav bottom bar covers the bottom of some tall screens (e.g. /security when QR is showing); nav to /account via URL path or via account-2fa row. The back-btn on /security uses router.back() which pops to whatever previous route was, so tests should URL-navigate (`await page.goto(f'{base}/audit-log')`) instead of chaining Pressable back-clicks. Audit-log DOES NOT expose entry-level testIDs — assertions must use inner_text() or role-based selectors.",
+  "rca_of_issue": "MINOR ISSUE — DELETE /clients/{id} and DELETE /invoices/{id} return HTTP 200 unconditionally. RCA: `await db.clients.delete_one(_oid_org(id, org))` returns a DeleteResult whose deleted_count is not checked. The org-scoped filter still guarantees NO cross-tenant data deletion (verified: after owner attempts to DELETE demo's client, demo's GET /clients/{id} still returns 200 with the original data). Impact is limited to (a) API contract inconsistency vs GET/PATCH (both return 404), and (b) a small info-leak where a caller can't distinguish 'deleted' from 'never existed' — but they also can't confirm existence, so this is very low severity. Fix: `res = await db.clients.delete_one(...); if res.deleted_count == 0: raise HTTPException(status_code=404, detail='Client not found')`. Apply the same pattern to delete_invoice, delete_receipt, delete_expense, delete_task, delete_credential, delete_reminder for consistency."
+}

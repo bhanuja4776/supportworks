@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 2 (Clients hub, Reminders, Settings, Reports/BAS, PDF/Excel exports, Templates) fully validated. Backend: 32/32 pytest tests pass (11 iteration-1 regression + 21 new iteration-2). New tests cover Clients CRUD (incl. 404), client overview with paid/pending invoice grouping + totals + attached tasks, Reminders CRUD & filter, Settings default+persist, /reports/summary default FY and fy=2025 with paid income + receipt expense in the AU FY buckets (Aug income, Sep expenses, gst_payable math, months[12] with Jul..Jun labels), invoice PDF (application/pdf, %PDF magic, 404 path), /reports/pdf, and Excel exports for both invoices & receipts (openpyxl xlsx MIME + PK zip magic). Frontend (mobile viewport 390x844): Dashboard shows Tools row with all four links (Tax Vault, Reports & BAS, Templates, Business); bottom tabs are Command/Clients/Scan/Invoices/Planner. Clients tab list + add-client modal works (created UI_Alice via API through UI). Client detail: profile card renders, editable notes saved successfully, add-reminder modal saved with local device-notification disclaimer shown, and 'new invoice for client' pre-fills client (client_name found in resulting screen). Reports screen: FY switcher (fy-prev/fy-next), income/expense chart, BAS summary block, and export-invoices/export-receipts buttons all present. Templates screen: all 3 templates present (invoice/report/expense). Settings screen loads and saves business profile via UI. No red screen, no navigation failures. Local push notifications for reminders are DEVICE-ONLY (expo-notifications, warning: 'Listening to push token changes is not yet fully supported on web') and cannot be validated on the web preview — reminder is confirmed persisted via API. AI endpoints (scan-receipt GPT-4o + transcribe Whisper) still pass end-to-end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/clients/{id} & /api/reminders/{id}", "issue": "Accepts arbitrary dict body (id/_id are popped but other fields e.g. created_at are not protected). Consider Pydantic partial-update models."},
+      {"endpoint": "PUT /api/settings", "issue": "No Pydantic validation; anything sent is stored (e.g. arbitrary keys, non-string ABN). Consider a Settings model with field types."},
+      {"endpoint": "GET /api/reports/summary", "issue": "Uses `d.get(primary) or d.get(fallback, '')` — if primary is empty string it correctly falls through, but issue_date defaults to today when creating invoices without explicit date, so 'unpaid but issued today' will still be excluded from income (only paid); behaviour is correct but subtle."},
+      {"endpoint": "GET /api/clients/{id} & /api/invoices/{id}/pdf", "issue": "Invalid non-24-hex id crashes with bson InvalidId → 500 (uncaught). Should wrap ObjectId() in try/except and return 400/404. (404-on-valid-but-missing id is handled correctly.)"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (RN Web)", "issues": ["Persistent console warnings: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents deprecated (use style.pointerEvents)'. Carried over from iteration 1 - not blocking."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/backend_iteration2_test.py",
+    "/app/test_reports/pytest/iteration2_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Wrap ObjectId(id) parsing in try/except across GET/PATCH/DELETE/PDF endpoints and raise HTTPException(400) for malformed ids instead of 500.",
+    "(Optional) Add strict Pydantic partial-update models for PATCH /clients/{id}, PATCH /reminders/{id}, PATCH /tasks/{id}, PATCH /invoices/{id}/status (status enum: paid|unpaid), and PUT /settings.",
+    "(Cosmetic) Migrate deprecated RN Web props: shadow* → boxShadow, props.pointerEvents → style.pointerEvents (repeated warnings on every screen)."
+  ],
+  "critical_code_review_comments": [
+    "server.py client_overview totals use inv.get('total', 0) — safe since Invoice model defaults total to 0.",
+    "reports_summary correctly enforces AU financial year (Jul-Jun) with month buckets and only counts paid invoices as income and all receipts as expenses.",
+    "PDF builders use ReportLab with reasonable A4 margins; invoice PDF pulls latest business settings each call.",
+    "Excel export uses openpyxl streaming to BytesIO; correct spreadsheetml MIME set.",
+    "No auth is present by design (single-user app) — endpoints are open."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration2_test.py (new, 21 tests covering all iteration-2 endpoints)"
+  ],
+  "success_rate": {"backend": "100% (32/32)", "frontend": "100% of iteration-2 flows tested"},
+  "seed_data_creation": "Test clients (TEST_Alice Nguyen, TEST_Delete Me, UI_Alice_<ts>), TEST invoices (paid + pending, incl. FY2025 dated ones), TEST reminders, TEST tasks, TEST receipt (Bunnings 2025-09-10) and settings row overwritten with TEST_Care Co / UI TEST Care Co. Backend pytest fixtures clean up all created ids on teardown; UI-created client and its data remain in the DB from the UI run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend base URL: EXPO_PUBLIC_BACKEND_URL (https://careworker-dash.preview.emergentagent.com). Run: pytest /app/backend/tests/ -v. Iteration-2 tests are in backend_iteration2_test.py (class-based, self-contained fixtures + teardown). Reports FY math depends on server clock — verified via explicit fy=2025 parameter to make assertions deterministic. Push notifications for reminders are DEVICE-ONLY (expo-notifications); on web only the API save is testable, which is verified. PDF/Excel endpoints are exercised via HTTP + magic byte assertion (frontend uses native share which cannot run on web). All frontend screens use testID attributes documented in files_of_reference and were validated to render + interact on 390x844 viewport.",
+  "rca_of_issue": "N/A - no bugs found in iteration 2. All endpoints and screens function as specified."
+}

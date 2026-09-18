@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 10 — DB-backed NDIS catalogue + CSV importer + assistant retrieval verified. Backend: 16/16 pytest passed on final run (backend_iteration10_test.py); one flaky assistant test (grocery/community) failed on first attempt because the LLM returned an empty codes array, then passed on the immediate retry — this is pure LLM non-determinism, not a code bug (manual curl confirmed 04_104_0125_6_1 is returned). Verified: (1) GET /api/ndis-catalogue returns {version,last_updated,items[]} from Mongo; GET /api/ndis-catalogue/version returns {version,last_updated,count} and count equals items length AND /api/ndis-codes length (25 initially). (2) POST /api/ndis-catalogue/import without Bearer token → 401. (3) Malformed CSV (missing code/name columns) → 400. (4) Merge (replace:false) with 1 brand-new code (99_999_0199_1_1) + 1 existing (01_011_0107_1_1) returned {imported>=1, updated>=0, total>=before} and the new code became visible via /api/ndis-codes and /api/ndis-catalogue. (5) replace:true with a 4-row CSV wiped and re-loaded exactly 4 codes (total==4, version=test-replace-iter10). (6) Assistant grounded retrieval: for 'shower and dress weekday morning' returns real DB code (01_011_0107_1_1); for 'grocery shopping in the community weekday' returns 04_104_0125_6_1; every returned code was validated against live /api/ndis-codes → NO fabrication; out-of-scope 'leaky tap' returned only real (or empty) codes. Regression: /auth/me 401, /billing/plans, lifetime membership, /dashboard/stats, demo login all pass. Frontend (390x844 mobile web): logged in as TEST_USER_EMAIL/admin → dashboard-screen loads. Account screen has account-ndis-import row → opens ndis-import-screen. NDIS Codes screen header ndis-import-btn also opens ndis-import-screen. Meta card correctly shows 'vtest-replace-iter10 · 4 codes · updated 2026-07-03' when meta loads. Assistant screen returns tappable use-code-01_011_0107_1_1 chip for the shower/dress query (~2s). Catalogue was restored to the original 25-code seed at end of run (wiped ndis_items+ndis_meta then restarted backend so _seed runs). Minor findings: (a) CSV importer sets icon:'list-circle' which is NOT a valid MaterialCommunityIcons name — RN Web logs 'list-circle is not a valid icon name for family material-community' warning on the NDIS Codes screen for imported rows. (b) Meta card in ndis-import-screen briefly shows 'v— · — codes · updated —' before /api/ndis-catalogue/version resolves — no ActivityIndicator / skeleton. Deprecated packages detected: none new (only carryover shadow*/pointerEvents web deprecations from prior iterations).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/ai/ndis-assistant", "issue": "Non-deterministic LLM occasionally returns codes=[] for a straightforward in-scope query ('grocery shopping in the community weekday'). Retry immediately succeeded. Consider a lightweight local keyword post-boost or a second-pass retry when codes=[] but candidates strongly match keywords."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ndis-codes.tsx card icon", "issue": "CSV importer stores icon:'list-circle' (server.py:480) but the NDIS Codes screen renders it via MaterialCommunityIcons — the family has no 'list-circle' glyph, so the console logs 'list-circle is not a valid icon name for family material-community' for every imported row and a fallback '?' box shows. Use 'format-list-bulleted-square' (MCI) or switch to Ionicons for this icon field.", "testID": "ndis-{code}", "priority": "LOW"},
+      {"component": "ndis-import.tsx meta card", "issue": "Before /api/ndis-catalogue/version resolves, the card shows 'v— · — codes · updated —' with no loading indicator. Add a small ActivityIndicator or skeleton while meta===null.", "testID": "ndis-import-screen", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web (global)", "issue": "'shadow*' style props deprecated on web — use 'boxShadow'. Non-blocking, carried from prior iterations."},
+      {"component": "RN Web (global)", "issue": "'props.pointerEvents' deprecated — use style.pointerEvents. Non-blocking, carried from prior iterations."},
+      {"component": "expo-notifications on web", "issue": "'Listening to push token changes is not yet fully supported on web' — expected on web preview only."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration10_test.py",
+    "/app/test_reports/pytest/iteration10_results.xml"
+  ],
+  "action_items": [
+    "Fix CSV importer icon default: change server.py:480 `'icon': 'list-circle'` to a valid MaterialCommunityIcons name (e.g. 'format-list-bulleted-square') OR change ndis-codes.tsx to render Ionicons for this field. Currently the console logs the warning per rendered row.",
+    "Add a loading state to /ndis-import while `meta` is null so users don't briefly see 'v— · — codes · updated —'.",
+    "OPTIONAL: For the assistant, add a small server-side retry when the model returns codes=[] but the user query has strong keyword overlap with a candidate — would eliminate the intermittent empty response we observed once."
+  ],
+  "critical_code_review_comments": [
+    "server.py:270-411 — Catalogue is fully DB-backed: _all_items() streams from ndis_items with _id excluded; _catalogue_meta() reads ndis_meta._id='catalogue' and derives count from a live count_documents. /ndis-catalogue, /ndis-catalogue/version and /ndis-codes all agree on the count — verified.",
+    "server.py:485-508 — Importer correctly enforces auth by manually calling get_current_user(authorization) (the route is defined above the auth section, so it can't use Depends). Malformed CSV → 400 via _parse_ndis_csv guard (i_code/i_name required). replace:true wipes first, then upserts each row. version defaults to 'custom-YYYYMMDD-HHMM' when caller omits it. Response echoes {imported, updated, total, before, version}.",
+    "server.py:292-313 — _search_items short-circuits when total<=120 (returns all items — good, keeps prompt complete for the 25-seed catalogue). For larger catalogues it splits the query into >2-char words and OR-regex-matches name/category/subcategory/tags/description with a limit of 60 candidates before hitting the LLM. Falls back to first 60 items if no keywords match — sane default.",
+    "server.py:386-393 — Assistant filters LLM-returned codes against candidates AND does a defensive db.ndis_items.find_one lookup by exact code. Any fabricated ID is silently dropped. Frontend can never render a fake code.",
+    "server.py:479-481 — MINOR BUG: import default icon 'list-circle' is not a valid MaterialCommunityIcons name (front-end renders via MCI on /ndis-codes). Choose a valid MCI icon or store 'ionicons:list-circle' and adapt the renderer.",
+    "ndis-import.tsx — Clean flow: DocumentPicker → read text (web via fetch, native via FileSystem) → api.ndisImport(csv_text, undefined, replace) → celebrate + reload meta. Auth token is auto-injected by api.ts. Error path parses backend JSON detail properly.",
+    "ndis-codes.tsx — Header now has a dedicated ndis-import-btn (cloud-upload-outline). Route push to /ndis-import works from both this screen and Account. The catalogue itself is fetched via loadCatalogue() (client-side cache in src/ndis) — that path was not re-verified this iteration; only endpoint behaviour and reachability were confirmed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration10_test.py (new — 16 tests)",
+    "/app/test_reports/pytest/iteration10_results.xml (new — junit)",
+    "/app/test_reports/iteration_10.json (this file)"
+  ],
+  "success_rate": {"backend": "100% on final run (16/16); 1 flaky LLM re-passed on retry", "frontend": "100% (5/5 flows: admin login, Account→import, ndis-codes header import, assistant chip render, meta card populated after import)"},
+  "seed_data_creation": "After running the replace:true test the ndis_items collection had only 4 rows (version=test-replace-iter10). I restored the original 25-code seed by wiping ndis_items + ndis_meta and restarting supervisor backend so the startup _seed re-populated. Final live state: version=2024-25.1, count=25, last_updated=2024-07-01.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run iter-10 backend tests: `pytest /app/backend/tests/backend_iteration10_test.py -v`. WARNING: TestCatalogueImport::test_import_replace_wipes_and_loads_only_csv permanently changes the live catalogue to 4 rows (version=test-replace-iter10). If a subsequent iteration needs the full 25-code seed, wipe the ndis_items+ndis_meta collections and restart supervisor backend (the startup hook re-seeds when the collection is empty). Assistant test 'grocery_shopping_community' is mildly flaky — retry once before flagging. Frontend testIDs added this iteration: ndis-import-screen, ndis-import-btn (in ndis-codes header), account-ndis-import (Account row), pick-csv, replace-toggle, run-import, import-result, import-error.",
+  "rca_of_issue": "N/A — no blocking bugs. The two minor issues (list-circle MCI warning + missing loading state on meta card) are cosmetic. The one flaky assistant response is inherent to LLM non-determinism and does not affect end-to-end correctness because the backend post-filters against the DB catalogue and the client tolerates empty codes arrays."
+}

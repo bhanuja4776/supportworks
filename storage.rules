@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Every uploaded file lives under a path prefixed with the owning user's
+// uid (receipts/{uid}/..., matching src/services/receipts.ts), so
+// ownership can be checked directly from the path — no Firestore lookup
+// needed, unlike the notes/activityTemplates Firestore subcollection rules.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /receipts/{ownerId}/{fileName} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == ownerId;
+    }
+
+    match /credentials/{ownerId}/{fileName} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == ownerId;
+    }
+
+    match /dailyNotes/{ownerId}/{date}/{fileName} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == ownerId;
+    }
+
+    match /clientDocuments/{ownerId}/{fileName} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == ownerId;
+    }
+
+    match /textDocuments/{ownerId}/{fileName} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == ownerId;
+    }
+
+    // Anything not explicitly matched above is denied by default.
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "summary": "Iteration 26 (Phases 3-4: Shift Templates + Trip Planning) verified end-to-end. Backend: 15/15 pytest cases pass in /app/backend/tests/backend_iteration26_test.py — owner login, client 'Alex Doe' create, POST /api/shift-templates returns client_name='Alex Doe', preview_subtotal=196.41, preview_gst=19.64, preview_total=216.05 (3 × 65.47 + 10% GST); GET lists it; PUT recomputes preview totals (verified 2 × 70.00 → 140.00 / 14.00 / 154.00 then restored to original); TEST_DEMO_EMAIL cannot see owner templates (org isolation ✓); POST /api/shifts/start with template_id creates active shift with template_id/start_time='09:00'/end_time='12:00', auto-adds template's client to client_ids, draft invoice pre-filled with 1 line item (code 01_011_0107_1_1, qty 3, rate 65.47, amount 196.41, subtotal 196.41, gst 19.64, total 216.05); GET /api/tasks?date=today contains 'Medication' + 'Walk' type='shift' time='09:00'; GET /api/shifts/active returns embedded template with trip_stops[0]={name:'Pool', address:'123 Swim St Melbourne', icon:'fitness'}; PATCH /api/shifts/{id}/end clears active state; POST /api/shifts/plan {scheduled_for:'2026-07-20', template_id} creates planned shift with drafts + tasks for 2026-07-20; DELETE planned shift removes attached drafts (verified via /api/invoices before/after); DELETE /api/shift-templates works then returns 404 on second call. Frontend (390x800, owner TEST_USER_EMAIL, onboarding-skip tapped): (1) Dashboard fresh state — current-shift-cta NOT rendered, start-shift-cta visible ✓. (2) Tapped Create Shift → shift-screen. (3) new-template-btn opened ShiftTemplateEditor bottom-sheet — filled tpl-name='Morning routine', tapped tpl-client-<cid> chip (via JS click to bypass horizontal-scroll viewport check inside RN Modal), typed tpl-start='0900' → auto-formatted to '09:00' ✓, tpl-end='1200' → '12:00' ✓, added 'Medication' via tpl-task-input+tpl-task-add, filled tpl-item-code='01_011_0107_1_1', qty='3', rate='65.47', desc='Daily personal activities', tpl-item-add → tpl-item-0 rendered with 'Invoice preview total 216.05' ✓, tapped tpl-stop-icon-fitness, filled tpl-stop-name='Pool', tpl-stop-address='123 Swim St Melbourne', tpl-stop-add → tpl-stop-0 rendered; tpl-save saved template. (4) Template card 'Morning routine' rendered with 'Alex Doe UI · 09:00–12:00 · 1 tasks · 1 codes' + 216.05 preview total (all substrings verified in body innerText). (5) Tapped card → template-preview panel showed participant 'Alex Doe UI', times '09:00 – 12:00', 'Medication' bullet, billing line, invoice total 216.05, trip stop 'Pool' row with Maps + Waze buttons (found 1× each in innerText, external links NOT clicked). (6) start-shift-btn text = 'Start now · Morning routine' with aria-disabled unset (ENABLED with zero participants selected ✓). (7) Pressed CTA → active shift screen: live banner with times chip '09:00 / 12:00' ✓, 'Trip plan' section rendered ✓, Pool stop visible ✓, Draft invoice list shows client with 216.05 ✓, end-shift-btn present. (8) Navigated back to Dashboard → BOTH current-shift-cta (green Current Shift) AND start-shift-cta (Create Shift) rendered together ✓ (screenshot /tmp/dash_active.png). (9) Planner tasks for today via /api/tasks?date=2026-07-07 include 'Medication' + 'Walk' with type='shift' ✓. (10) Returned to shift screen and pressed end-shift-btn — shift ended cleanly, screen returned to template list (regression ✓). (11) Tapped template-edit-<id> pencil → editor pre-filled with 'Morning routine', renamed to 'Morning routine v2', saved → card updated to 'Morning routine v2' ✓. (12) Opened editor again via pencil, pressed tpl-delete → confirmAction dispatched (window.confirm auto-accepted via dialog handler on web) → template card disappeared ('Morning routine v2' absent from DOM after 3s) ✓. Cleanup: ended/deleted any residual active shift, deleted all templates + the UI client via API. Console shows only pre-existing RN-Web deprecations (shadow*, pointerEvents, expo-notifications web token) — no new red-screen errors, no unhandled promise rejections. Iteration 25 items (onboarding, trial banner, care_sections, +not-found) were NOT retested per spec.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN-Web deprecation warnings (pre-existing carry-over)", "issue": "'shadow*' style props + 'props.pointerEvents' deprecation warnings continue to fire. Cosmetic — migrate to boxShadow / style.pointerEvents. Not iteration-26 regression."},
+      {"component": "expo-notifications web push tokens", "issue": "'[expo-notifications] Listening to push token changes is not yet fully supported on web' — expected on web preview, works on native builds."},
+      {"component": "react-native-keyboard-controller (ShiftTemplateEditor.tsx:5)", "issue": "KeyboardAwareScrollView imported from react-native-keyboard-controller (native-only). Silent no-op on web (works fine here) but flagged so main agent is aware — if this ever breaks Metro web bundling, fall back to a plain ScrollView wrapper. Reference: /app/frontend/src/components/ShiftTemplateEditor.tsx:5."}
+    ]
+  },
+  "iteration_26_verification": {
+    "backend": {
+      "template_crud": "PASS (create returns preview 196.41/19.64/216.05, list contains it, update recomputes 140/14/154, org isolation demo cannot see owner)",
+      "shift_start_with_template": "PASS (client auto-added, draft invoice 216.05, template_id + start_time '09:00' on shift)",
+      "tasks_created_from_routine": "PASS (Medication + Walk type='shift' time='09:00' on today)",
+      "active_shift_returns_template": "PASS (embedded template.trip_stops[0] = Pool/123 Swim St Melbourne/fitness)",
+      "end_and_plan": "PASS (end clears active, plan creates planned shift + drafts + tasks for 2026-07-20)",
+      "delete_planned_removes_drafts": "PASS (drafts absent from /api/invoices after DELETE /shifts/{id})",
+      "delete_template_then_404": "PASS (200 then 404)"
+    },
+    "frontend": {
+      "dashboard_no_active": {"current_shift_cta": false, "start_shift_cta": true},
+      "editor_time_auto_format": {"start_input_0900": "09:00", "end_input_1200": "12:00"},
+      "editor_preview_total_216_05": true,
+      "template_card": {"name": "Morning routine", "client_name": "Alex Doe UI", "times": "09:00–12:00", "1_tasks_1_codes": true, "preview_total_216_05": true},
+      "template_preview_panel": {"participant": true, "times": true, "medication_bullet": true, "invoice_total_216_05": true, "pool_stop": true, "maps_button": true, "waze_button": true},
+      "cta_text_start_now_template": "Start now · Morning routine",
+      "cta_enabled_with_zero_participants": true,
+      "active_shift_screen": {"times_chip_09_00_12_00": true, "trip_plan_section": true, "pool_stop": true, "draft_216_05": true, "end_shift_btn": true},
+      "dashboard_with_active": {"current_shift_cta": true, "start_shift_cta": true},
+      "planner_today_shift_tasks": ["Medication", "Walk"],
+      "end_shift_regression": true,
+      "edit_template_prefill_and_save": {"prefilled_name": "Morning routine", "renamed_to_v2_persisted": true},
+      "delete_template_removes_card": true
+    }
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_26.json",
+    "/app/test_reports/pytest/iteration26_results.xml",
+    "/app/backend/tests/backend_iteration26_test.py"
+  ],
+  "action_items": [
+    "No blocking issues — iteration 26 ships as-is.",
+    "OPTIONAL: routine tasks are re-created every time /shifts/start runs against a template on the same date, which can pile up duplicates (planner showed ['Medication','Walk','Medication'] after two shift-start cycles). Consider de-duping by (title, date, template_id) or removing old shift-type tasks on shift end. Low priority — cosmetic planner clutter, not called out in the spec.",
+    "OPTIONAL (carry-over from iter 25): migrate shadow* → boxShadow and props.pointerEvents → style.pointerEvents to silence RN-Web warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1976-1997 ShiftTemplateBody + _template_out cleanly recompute preview_subtotal/gst/total on every list/create/update — no stale totals possible. Uses the same compute_invoice_totals helper as invoices so maths stays consistent.",
+    "server.py:1815-1843 /shifts/start correctly auto-appends template.client_id to client_ids (if missing) BEFORE _create_shift_drafts, so a template-only start (client_ids=[]) still creates the pre-filled draft for the template's participant. Good.",
+    "server.py:1875-1906 _create_shift_drafts only applies template line items when template.client_id == current cid — so multi-client shifts won't accidentally pre-fill the wrong participant's invoice with the template's codes. Correct.",
+    "server.py:1952-1959 DELETE /shifts/{id} wipes draft invoices attached to the shift but preserves sent/paid ones — good safety net when a planned shift is cancelled after some invoicing already happened.",
+    "server.py:2010-2042 shift-template CRUD is fully org-scoped via _oid_org(template_id, org) → org isolation verified via pytest (demo cannot see owner templates).",
+    "frontend/app/(tabs)/shift.tsx:64 canGo = selected.length > 0 || !!selTemplate ← correctly enables Start/Plan CTA when only a template is chosen (zero participants), matching the spec.",
+    "frontend/app/(tabs)/shift.tsx:131-136 activeTemplate.trip_stops render conditionally with TripPlan below the live banner — clean composition.",
+    "frontend/app/(tabs)/index.tsx:238-256 dashboard renders current-shift-cta ABOVE start-shift-cta when on shift, both use the same style.startShift class — visually consistent (green vs brand accent).",
+    "ShiftTemplateEditor.tsx:26-29 fmtTime is a tiny pure helper — strips non-digits and inserts ':' after 2 chars. Handles '0900' → '09:00' and '900' → '9:00' correctly. Preserves partial input during typing (< 3 chars stays raw).",
+    "ShiftTemplateEditor.tsx:98 total = items × 1.1 mirrors the backend 10% GST calc — matches server preview_total to the cent (verified 3 × 65.47 × 1.10 = 216.051 → both round to 216.05).",
+    "No files exceed 700 lines (server.py 2970 lines is monolithic but hasn't grown this iteration outside the ~80-line template section; shift.tsx 395, ShiftTemplateEditor.tsx 301, TripPlan.tsx 53). Modular enough."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration26_test.py (new, 15 cases — all pass in 2.62s)",
+    "/app/test_reports/pytest/iteration26_results.xml (new)",
+    "/app/test_reports/iteration_26.json (this report)"
+  ],
+  "success_rate": {"backend": "15/15 (100%)", "frontend": "12/12 spec items verified (Dashboard pre-active state, editor open + fields + time auto-format, editor preview 216.05, save + card render, tap card + preview panel with Maps/Waze, CTA enabled zero participants, start → active screen with times chip + Trip plan + Pool + draft 216.05, Dashboard current-shift-cta appears, Planner today has Medication+Walk, end-shift regression, edit template prefill+rename, delete template)"},
+  "seed_data_creation": "During UI testing: created client 'Alex Doe UI' + one shift template 'Morning routine' (later renamed 'v2' then deleted) + one active shift (later ended and left in ended state — no active shift remains) + planner tasks (Medication, Walk, plus one Medication from the earlier pytest run — see action item on de-dup). Client, all templates, and any residual active shift were DELETED via API at the end of the run. Pytest test data (TEST_Alex_Doe_*) auto-cleaned by module-scoped fixture teardown. Owner org state at teardown: 0 templates, 0 active shifts, 0 planned shifts from iteration 26 (the earlier ended shift from the UI flow remains in db.shifts with status='ended' but has no drafts — same behaviour as prior iterations). Note: planner still contains today's shift-type tasks from the pytest+UI runs (they're date-scoped, not template-scoped, and the app has no bulk-task-delete endpoint).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 26 fully verified. Owner TEST_USER_EMAIL fresh 14-day trial expires 21/07/2026 (unchanged). No active shift left in the org. If you re-run iteration_26_test.py you'll get 15/15 again — it creates+deletes its own client/template/shifts. Playwright tip: horizontally-scrollable ScrollView chips inside RN Modal (tpl-client-<id>) trigger 'Element is outside of the viewport' on Playwright's click even with force=True — use `page.eval_on_selector(sel, 'el => el.click()')` (JS click) to bypass the viewport gate. Same trick works for tpl-stop-icon-* and other chips. window.confirm dialogs from confirmAction() on web are auto-accepted via `page.on('dialog', ...)` — no in-app confirm sheet on web. The invoice count-based numbering (INV-100x) may produce duplicates across orgs — flagged in the review as not in scope. react-native-keyboard-controller is native-only (no-op on web) and does not affect UI testing."
+}

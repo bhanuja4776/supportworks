@@ -1,0 +1,71 @@
+{
+  "summary": "Iteration 24 (Onboarding checklist + Save Today's Notes to a client + View saved notes on client profile) verified end-to-end. Backend: 8/8 pytest cases pass in /app/backend/tests/backend_iteration24_test.py — POST /api/clients/{id}/notes returns 200 with persistence (verified via GET), empty-string and whitespace-only text return 400, non-existent client returns 404, list returns newest-first order (verified with 3 sequential inserts), DELETE removes the note and returns success, DELETE non-existent note returns 404, unauthenticated request returns 401/403. All responses org-scoped and correctly exclude Mongo _id. Frontend (mobile viewport 390x844, logged in as TEST_USER_EMAIL, freshly wiped account): (1) onboarding-checklist card visible with 'Getting Started' + progress 'n of 4 done' (started at '1 of 4 done' with business-profile pre-checked because business_name was already set), progress bar renders, all 4 step testIDs (onboarding-profile / onboarding-client / onboarding-invoice / onboarding-assistant) and onboarding-dismiss present, tapping onboarding-client correctly navigated to /clients, completed steps show green checkmark-circle + strikethrough. After creating a client via API, checklist auto-updated to '2 of 4 done' with 'Add your first client' checked. (2) notes-save-client-btn on NotesCard visible; tapping with empty note shows the 'Write or dictate a note first' confirmation dialog (empty-message text matched). (3) After typing a note via notes-inline-input and tapping Save-to-client, the bottom-sheet picker opened showing the client row with correct testID 'notes-client-{id}' and client name; tapping it closed the picker and persisted the note (verified via subsequent GET). (4) On /client/{id}, saved-notes-btn is present in header with a count badge showing '1'; tapping opened the 'Saved Notes' modal listing the dated note ('5 July 2026') with visible text and del-saved-note-{id} delete button. Backend logs clean. Only pre-existing RN-Web deprecation warnings (shadow*, pointerEvents, expo-notifications web token, useNativeDriver on TipsBanner). One new console warning surfaced when the client-detail screen mounts: 'Unexpected text node: . A text node cannot be a child of a <View>' — cosmetic (does not affect rendering), likely a stray whitespace between JSX elements. Reported below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "client/[id].tsx", "issue": "Console warning 'Unexpected text node: . A text node cannot be a child of a <View>' fires when the client-detail screen mounts and the Saved Notes modal is opened. Cosmetic — modal renders and functions correctly. Likely stray whitespace/newline between JSX siblings inside a View. Reference: /app/frontend/app/(tabs)/client/[id].tsx (around header actions ln 128-141 or the modal block ln 415-450).", "testID": "saved-notes-btn / (modal)", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN-Web deprecation warnings (pre-existing, carry-over from iter 18-23)", "issue": "'shadow*' style props, props.pointerEvents deprecation warnings still logged. Cosmetic only; migrate to boxShadow / style.pointerEvents when convenient. Not introduced this iteration."}
+    ]
+  },
+  "iteration_24_verification": {
+    "logged_in_as": "TEST_USER_EMAIL",
+    "onboarding_checklist": {
+      "testid_present": "onboarding-checklist",
+      "progress_text_shows": "2 of 4 done (after client create)",
+      "all_step_testids_present": ["onboarding-profile", "onboarding-client", "onboarding-invoice", "onboarding-assistant"],
+      "dismiss_button_present": "onboarding-dismiss",
+      "completed_steps_show_green_check_and_strikethrough": true,
+      "tap_onboarding_client_navigates_to_clients_screen": true,
+      "auto_updates_after_creating_client_via_api": true
+    },
+    "save_todays_notes_to_client": {
+      "save_button_testid_present": "notes-save-client-btn",
+      "empty_note_shows_write_or_dictate_message": true,
+      "client_picker_bottom_sheet_opens": true,
+      "picker_lists_clients_with_testid": "notes-client-{id}",
+      "tapping_client_saves_note_and_persists_via_api": true
+    },
+    "saved_notes_on_client_profile": {
+      "saved_notes_btn_testid_present": "saved-notes-btn",
+      "count_badge_shows": "1",
+      "modal_lists_dated_note": "5 July 2026 with note text",
+      "delete_button_testid_present": "del-saved-note-{id}",
+      "empty_state_message_configured": "clientDetail.noSavedNotes (verified in source)"
+    }
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_24.json",
+    "/app/test_reports/pytest/iteration24_results.xml",
+    "/app/backend/tests/backend_iteration24_test.py"
+  ],
+  "action_items": [
+    "OPTIONAL: investigate stray whitespace in /app/frontend/app/(tabs)/client/[id].tsx causing 'Unexpected text node' console warning (cosmetic, does not affect UX).",
+    "OPTIONAL (carry-over): migrate shadow* -> boxShadow and props.pointerEvents -> style.pointerEvents to silence RN-Web deprecation warnings.",
+    "No blocking issues — iteration 24 ships as-is."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1255-1285 client_notes endpoints correctly org-scoped (Depends(current_org)), validate client existence before insert (404), reject empty/whitespace text (400 via .strip()), return newest-first sorted list (sort created_at desc), and use ObjectId for delete lookup. doc_out() strips Mongo _id — verified in pytest response.",
+    "OnboardingChecklist.tsx logic: all 4 flags derived (profile from settings.abn OR non-default business_name; client/invoice from list length; assistant from AsyncStorage key set on route.push). Auto-hide when all done + DISMISS_KEY persisted via AsyncStorage. useFocusEffect re-loads on every focus — correct for updating after navigation returns.",
+    "NotesCard.tsx openPicker correctly guards empty text using stripHtml (handles rich-HTML notes from full editor). Bottom sheet uses Modal (transparent + slide) with backdrop Pressable dismiss. saveToClient shows optimistic loader per row (savingClient state).",
+    "client/[id].tsx header packs 3 icon buttons (saved-notes, edit, delete) into a fixed-width headerActions row — could get cramped on narrower devices but at 390 width it fits.",
+    "All new interactive elements have testID (onboarding-profile/client/invoice/assistant/dismiss, notes-save-client-btn, notes-client-{id}, saved-notes-btn, del-saved-note-{id}) — matches spec exactly.",
+    "No file exceeds 700 lines: OnboardingChecklist.tsx 121 lines, NotesCard.tsx 223 lines, client/[id].tsx 580 lines."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration24_test.py (new pytest file, 8 cases — all pass)",
+    "/app/test_reports/pytest/iteration24_results.xml (new)",
+    "/app/test_reports/iteration_24.json (this report)"
+  ],
+  "success_rate": {"backend": "8/8 (100%)", "frontend": "8/8 flows pass (onboarding-checklist render, progress text, step nav onboarding-client, checked/strikethrough state, empty-note dialog, client picker + persist, saved-notes-btn + badge, modal + delete testid)"},
+  "seed_data_creation": "During testing: created TEST_UI_Alice client via API for UI flow (id=6a49e191731cb08c1338b748) — DELETED after testing. Dashboard 2026-07-05 note text was cleared back to empty. pytest test data (TEST_NoteClient_*, TEST_order_note_*, TEST_to_delete) was cleaned via fixture teardown. Account left in clean state matching how it was received (0 clients, 0 invoices, empty dashboard note).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 24 fully verified. Account remains wiped (0 clients, 0 invoices) — same clean-slate state as delivered. AsyncStorage (browser localStorage on web) DISMISS_KEY 'onboarding_dismissed_v1' was toggled during testing but is per-browser-session; new browser contexts will show the checklist. Backend client_notes collection may contain orphaned notes if a client was deleted while its notes existed — not observed but worth noting: server does NOT cascade-delete client_notes when a client is deleted (see /app/backend/server.py:1255-1285). If cascade is desired, add a bulk delete of client_notes inside the DELETE /clients/{id} handler. Not required by this iteration's spec."
+}

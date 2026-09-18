@@ -1,0 +1,80 @@
+{
+  "summary": "Iteration 29 FULL PASS. Backend: 12/12 pytest cases pass in ~5.3s (backend_iteration29_test.py) — (a) POST /api/invoices with mixed gst_free items + ttp:true returns subtotal 185.12, gst 5.00 (only the non-gst-free $50 item), total 190.12, ttp persisted, per-item service_date/start_time/end_time/gst_free all round-trip via POST->GET; (b) invoice-number uniqueness after delete verified — created INV-N, deleted it, created another → new number strictly greater than deleted one (persistent counter in db.counters proven); (c) PUT /api/invoices/{id} recomputes totals correctly (100 non-gst + 50 gst-free => subtotal 150, gst 10, total 160), preserves ttp, updates per-item gst_free/start/end/service_date; (d) GET /api/invoices/{id}/pdf returns 200 application/pdf with %PDF magic bytes for a ttp+mixed-gst invoice, pypdf extraction confirms 'TTP' marker AND 'TEST Iter29 Trading' account name appears in the payment details section; (e) PUT /api/settings {account_name} persists + GET returns it; (f) POST /api/clients with next_of_kin dict persists, GET returns it, PATCH updates it (name/relationship both change), GET verifies; (g) POST /api/scan-document returns 401 without token (privacy) and 500 with junk base64 while auth is present — server does NOT crash (GET /api/ still 200 after); (h) POST /api/client-documents with extracted_text/doc_date/key_parties persists, GET /api/client-documents?client_id=X returns them intact; (i) regression — tasks CRUD (POST/GET?date=/PATCH/DELETE), duplicate invoice endpoint (new id, new number, preserved items), /invoices+/clients+/tasks lists all 200. Frontend (390x844, owner login, onboarding skipped): (1) New Invoice /invoice/new — all required testIDs present (ttp-toggle, service-date-input, issue-date-input, due-date-input, compliance-panel, item-sdate-0-0, item-start-0-0, item-end-0-0, item-gstfree-0-0, item-rate-0-0, item-qty-0-0, item-desc-0-0, save-invoice-btn); compliance checklist DOES include 'Invoice dated on/after service date(s)' (green tick since svc_date == today by default). (2) Totals recompute live: qty=2 rate=100 → subtotal $200 · GST-free ON → GST $0.00 · Total $200.00; toggling GST-free OFF → GST becomes $20.00 (10%) · Total $220.00; toggling back re-zeros GST. (3) TTP toggle ticked → compliance count jumps to 7/8 (only Due date red because we skipped filling it — that's expected UI, not a bug). (4) Save Draft created INV-1010 successfully → dashboard shows 'Create your first invoice' marked done. (5) Invoices list shows the new invoice; opening it → detail screen renders 'Claim type: TTP' badge on the header meta line, and each line item is annotated 'GST-free · 09:00–11:00' — matches spec (the 'Delivered:' prefix is only on the PDF per spec, not the detail screen; detail line reads 'GST-free · <start–end>' which is functionally equivalent and cleaner). (6) Business Settings /settings — testID setting-account_name renders between Bank and BSB, filled 'TEST Iter29 Trading' → save-settings-btn → success (modal even offered 'Apply updates to draft invoices?' showing INV-1010 as candidate — nice UX). (7) Clients — added a new client with Next of Kin fields (nok-name Jane FE Kin / nok-relationship Mother / nok-phone +61400555666 / nok-email jane@example.com) → save → client profile shows the Next of Kin card (testID nok-card) with name/relationship/email + a tappable phone chip (testID nok-call) — screenshot confirms card layout. (8) Client profile → Documents '+' opens the modal with 3 buttons — doc-camera + doc-gallery + doc-ai-scan (AI Scan) all present as required; created a doc manually (title 'TEST FE doc iter29', Save) → doc row appears; tapping the row opens the detail sheet (testID doc-view-sheet). (9) Planner — /planner renders planner-screen; add-task-fab tapped → task modal → title 'TEST iter29 shift' + type shift + save → planner-summary chip appears showing '1 shift 0/1 done'; tapped task ROW → edit sheet opened pre-filled with delete-task-modal-btn present; changed title to 'EDITED' + Save → row updates; tapped checkbox toggle-task-<id> → summary changes to '1/1 done'; re-opened edit sheet → tapped delete-task-modal-btn → task disappears. Every planner flow item in the spec passed. No red-screen errors. Console warnings limited to pre-existing shadow*/pointerEvents RN-Web deprecation notices — no regression.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Invoice detail (/invoice/[id])", "issues": ["Spec mentioned 'Delivered: date, times, GST-free' per-line meta. The DETAIL screen (mobile view) renders only 'GST-free · 09:00–11:00' without the 'Delivered:' prefix. Backend PDF is where 'Delivered:' is expected (per spec text), so this is likely intentional. Flagging for confirmation only — not blocking."]}
+    ],
+    "react_native_issues": []
+  },
+  "backend_matrix": {
+    "TestInvoiceGSTAndTTP.test_create_invoice_gst_mix_and_ttp": "PASS (subtotal 185.12, gst 5.00, total 190.12, ttp true, item svc_date/start/end/gst_free all round-trip)",
+    "TestInvoiceNumberUniqueness.test_deleted_number_not_reused": "PASS (INV-N deleted → INV-N+1 issued, never reused)",
+    "TestInvoiceEdit.test_edit_preserves_and_updates": "PASS (PUT recomputes totals & preserves ttp + per-item fields)",
+    "TestInvoicePDF.test_pdf_ttp_gst_mix_and_account_name": "PASS (200 application/pdf, contains 'TTP' + 'TEST Iter29 Trading' via pypdf)",
+    "TestSettingsAccountName.test_put_get_account_name": "PASS",
+    "TestClientNextOfKin.test_create_and_patch_next_of_kin": "PASS (POST+GET+PATCH+GET all preserve nok dict)",
+    "TestScanDocument.test_scan_document_401_without_token": "PASS (401 without Bearer)",
+    "TestScanDocument.test_scan_document_junk_base64_returns_500": "PASS (500 on garbage b64, server alive afterwards)",
+    "TestClientDocumentsExtracted.test_create_and_list_with_extracted_fields": "PASS (extracted_text/doc_date/key_parties persist + return in list)",
+    "TestRegression.test_tasks_crud": "PASS (POST/GET?date=/PATCH/DELETE all 200)",
+    "TestRegression.test_duplicate_invoice": "PASS (new id, new number, items preserved)",
+    "TestRegression.test_dashboard_stats": "PASS (/invoices+/clients+/tasks all 200)"
+  },
+  "frontend_matrix": {
+    "owner_login_skip_onboarding": "PASS",
+    "invoice_new_all_testIDs": "PASS (13/13 required testIDs present incl. ttp-toggle, item-sdate/start/end-0-0, item-gstfree-0-0)",
+    "compliance_checklist_has_invoice_dated_on_after": "PASS (green tick since svc==today)",
+    "totals_gst_free_on": "PASS (Subtotal $200.00, GST $0.00, Total $200.00)",
+    "totals_gst_free_off": "PASS (GST becomes $20.00, Total $220.00)",
+    "ttp_toggle_works": "PASS (compliance count changed to 7/8, tick visible)",
+    "save_invoice_draft": "PASS (INV-1010 created)",
+    "invoice_list_shows_new": "PASS (participant name visible in list)",
+    "invoice_detail_claim_type_TTP": "PASS ('Claim type: TTP' rendered)",
+    "invoice_detail_per_item_gst_free_label": "PASS ('GST-free · 09:00–11:00' on line)",
+    "settings_account_name_field": "PASS (renders between Bank & BSB, saves, apply-to-drafts modal offered)",
+    "client_add_with_nok_fields": "PASS (all four nok-* inputs present)",
+    "client_profile_nok_card": "PASS (nok-card visible, nok-call phone chip present)",
+    "client_docs_ai_scan_button": "PASS (doc-camera + doc-gallery + doc-ai-scan all present in add-doc modal)",
+    "doc_manual_create_and_view_sheet": "PASS (row tap opens doc-view-sheet)",
+    "planner_screen_and_fab": "PASS",
+    "planner_summary_after_add": "PASS ('1 shift 0/1 done')",
+    "planner_task_edit_row": "PASS (tap row → edit sheet w/ delete-task-modal-btn, title change persisted)",
+    "planner_checkbox_toggle": "PASS ('1/1 done' after tap)",
+    "planner_delete_from_modal": "PASS (task removed)"
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_29.json",
+    "/app/test_reports/pytest/iteration29_results.xml",
+    "/app/backend/tests/backend_iteration29_test.py"
+  ],
+  "action_items": [
+    "None blocking. All 4 iteration-29 features (NDIS-compliant invoicing / next-of-kin / scan-document / planner UX) verified end-to-end on backend AND frontend.",
+    "OPTIONAL: The invoice DETAIL screen shows 'GST-free · start–end' on each line but omits the literal 'Delivered:' prefix that the spec text mentions. The PDF likely has it (backend has the metadata to render it). Confirm with product whether the detail screen should also carry 'Delivered:' for symmetry with the PDF."
+  ],
+  "critical_code_review_comments": [
+    "server.py:774 _next_invoice_number() correctly uses BOTH max(existing INV-* numbers) AND db.counters seq — guarantees no reuse across deletes. Verified by test.",
+    "server.py:766 compute_invoice_totals() applies GST only on items with gst_free=False — matches spec (default True keeps NDIS supports GST-free).",
+    "server.py:365 /scan-document uses Depends(current_org) — 401 without token verified; junk base64 returns HTTP 500 with 'Extraction failed:' detail, server stays alive.",
+    "server.py:2336 PUT /invoices/{id} recomputes subtotal/gst/total on every edit AND preserves ttp via payload.model_dump() — correct.",
+    "server.py:1173 Client.next_of_kin is a plain dict — Pydantic keeps it lossless, PATCH via /clients/{id} with body {next_of_kin: {...}} replaces the sub-doc atomically.",
+    "server.py:1687 PDF builder adds 'Account name: ...' line under Payment Details when bg('account_name') is set — verified by pypdf text extraction.",
+    "server.py:2314 /client-documents accepts extracted_text/doc_date/key_parties on the ClientDocCreate schema — new fields round-trip cleanly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration29_test.py (new, 12 tests, ~5.3s)",
+    "/app/test_reports/pytest/iteration29_results.xml (new)",
+    "/app/test_reports/iteration_29.json (this report)"
+  ],
+  "success_rate": {
+    "backend": "12/12 (100%)",
+    "frontend": "20/20 UI checks PASS"
+  },
+  "seed_data_creation": "Test artefacts created during this run (best-effort teardown via autouse fixture at module end for backend tests): a handful of TEST_iter29* clients + invoices + tasks + docs on the owner org. Frontend flow also created: client 'TEST_iter29 FE NoK' (with Next-of-Kin Jane FE Kin), invoice INV-1010 for 'TEST FE Participant' (draft, TTP=true, GST-free ticked), and a client doc 'TEST FE doc iter29'. All are prefixed with TEST/TEST_iter29 for easy identification. Owner org may retain them; safe to leave since the fresh trial expected some data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 29 (NDIS-compliant invoicing + next_of_kin + scan-document + planner UX) is fully green backend + frontend. Backend regression coverage: 12 focused tests hitting all four feature groups + tasks CRUD + duplicate invoice. Frontend regression coverage: 20 UI checks including live GST recomputation on gst_free toggle, TTP toggle, invoice save + detail render, next_of_kin card render + phone chip, doc modal AI-Scan button + doc-view-sheet, planner add/edit/toggle/delete cycle + summary chip. Only cosmetic note: the invoice DETAIL screen shows 'GST-free · start–end' on each line without the literal 'Delivered:' prefix mentioned in the spec text — that prefix is expected on the PDF (backend supports it). If future iterations touch the invoice detail line rendering, confirm with product whether to also add 'Delivered:' for symmetry.",
+  "rca_of_issue": "N/A — no bugs found."
+}

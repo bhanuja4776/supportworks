@@ -1,0 +1,76 @@
+{
+  "summary": "Backend + Frontend E2E for Phase D (Plan-ahead Shifts) and Phase E (Bank Reconcile). Backend: 16/16 pytest cases pass in /app/backend/tests/backend_iteration22_test.py after fixing ONE critical crash in POST /api/bank/import (KeyError: 'id' — matched invoice doc from Mongo has _id, not id). Frontend on mobile viewport 390x844, logged in as TEST_USER_EMAIL: (D1) end-shift-btn ends any active shift → planning view renders correctly; (D2) two shiftclient-<id> rows selectable; before setting a date the primary CTA is start-shift-btn 'Start now (2)'; after typing 31/12/2026 in schedule-date it flips to plan-shift-btn 'Plan shift (2)'. (D3) Tapping plan-shift-btn creates a planned-<id> card under 'Planned shifts' with 'Activate' + close-icon; card shows '31/12/2026' calendar chip and '2 participants · $0.00'. (D4) activate-<id> flips app to active shift view with live 'On shift since …' banner and 2 draft-<invId> rows listed. (D5) cancel-plan-<id> triggers a native/web confirm, removes the planned card and its draft invoices. (D6) With clients selected and date cleared, start-shift-btn 'Start now (1)' immediately starts a live shift. (E1) Reports → open-bank-reconcile → bank-screen loads with Paste statement CSV, Pick .csv file (bank-pick-file), Import & match (bank-import-btn). (E2) Pasting 'Date,Description,Amount\\n01/07/2026,Payment INV-1008,258.39\\n02/07/2026,Woolworths,-45.30' and tapping bank-import-btn imported 2 rows (txn-<oid>). Credit row auto-matched: shows 'Matches INV-1008 · Mark paid' with testID reconcile-<txnId>. (E3) bank-select-all toggles all txn-select-<id>; unselecting hides the reconcile-selected-btn footer; re-selecting shows 'Reconcile selected (1)' — only CREDIT with a match counts. Tapping reconcile-selected-btn marks the invoice PAID (verified via GET /api/invoices/{id} status==paid). (E4) ignore-<id> removes row locally + server-side (status=ignored). bank-clear-btn (top-right trash) clears all txns via DELETE /api/bank/transactions. (E5) Reports BAS/GST-collected updated LIVE: 2,274.32 → 2,532.71 (delta $258.39 matches INV-1008 total). Zero i18n key leaks (bank.*, shift.*) — all 82 shift keys + 33 bank keys resolved in en.json. Deprecated packages check: no expo-av / expo-barcode-scanner / expo-background-fetch found. Only pre-existing RN-Web deprecation warnings (shadow*, pointerEvents, Image.style.resizeMode) carried over from iters 18-21 — cosmetic.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "bank.tsx debit row without match", "issue": "Spec says debit rows with no match should display 'No matching invoice'. Current code only renders bank.noMatch when `credit && !suggested_invoice_id`; for debit rows without a match it renders `null` (no helper text — only 'Ignore' visible). Minor UX polish: consider rendering the noMatch label for debits too, or a friendlier 'Debit — not reconcilable' label. Reference: /app/frontend/app/(tabs)/bank.tsx:172-174.", "testID": "txn-<id>", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN-Web deprecation warnings (pre-existing)", "issue": "'shadow*' style props, props.pointerEvents, and Image.style.resizeMode are still logged on every navigation. Carried over from iterations 18-21; not introduced this round. Migrate to boxShadow / style.pointerEvents / props.resizeMode when convenient."}
+    ]
+  },
+  "phase_d_verification": {
+    "logged_in_as": "TEST_USER_EMAIL",
+    "route": "/shift",
+    "testids_present": ["shift-screen","back-btn","end-shift-btn","shiftclient-<id>","schedule-date","start-shift-btn","plan-shift-btn","planned-<id>","activate-<id>","cancel-plan-<id>","draft-<invId>","shift-add-receipt"],
+    "end_active_shows_planning_view": true,
+    "start_shift_btn_shown_when_no_date": true,
+    "plan_shift_btn_shown_when_date_set": true,
+    "plan_creates_planned_card_with_meta": true,
+    "activate_transitions_to_live_shift_with_drafts": true,
+    "cancel_plan_removes_card_and_drafts": true,
+    "start_now_still_works": true,
+    "i18n_leaks": 0
+  },
+  "phase_e_verification": {
+    "route": "/bank via reports open-bank-reconcile",
+    "testids_present": ["bank-screen","back-btn","bank-clear-btn","bank-csv-input","bank-pick-file","bank-import-btn","bank-select-all","txn-<id>","txn-select-<id>","reconcile-<id>","ignore-<id>","reconcile-selected-btn"],
+    "csv_paste_import_2_rows": true,
+    "credit_auto_matched_to_invoice": "INV-1008 ($258.39)",
+    "reconcile_marks_invoice_paid": true,
+    "select_all_toggle_works": true,
+    "unselect_all_hides_footer_button": true,
+    "reconcile_selected_paid_invoice": true,
+    "ignore_removes_row": true,
+    "clear_all_removes_all_txns": true,
+    "reports_live_bas_updated": "Paid: —; GST Collected 2,274.32 → 2,532.71 (Δ 258.39)",
+    "i18n_leaks": 0
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_22.json",
+    "/app/test_reports/pytest/iteration22_results.xml",
+    "/app/backend/tests/backend_iteration22_test.py"
+  ],
+  "action_items": [
+    "FIXED IN THIS ITERATION: POST /api/bank/import was crashing with 500 KeyError: 'id'. The Mongo document returned from _suggest_match() has `_id` (ObjectId) not the doc_out()-serialised `id`. Fix applied at /app/backend/server.py:1905 → use `str(match['_id'])` when populating suggested_invoice_id. Backend restarted and all 16 pytest cases pass.",
+    "OPTIONAL polish: Show 'No matching invoice' (bank.noMatch) for DEBIT rows without a match too, not just credits. Currently debits render only the 'Ignore' link with no explanatory text. Reference: /app/frontend/app/(tabs)/bank.tsx:167-174.",
+    "OPTIONAL (carry-over from iters 18-21): migrate shadow* → boxShadow, props.pointerEvents → style.pointerEvents, Image.style.resizeMode → props.resizeMode. Cosmetic RN-Web deprecations."
+  ],
+  "critical_code_review_comments": [
+    "server.py bank_import() previously assumed the invoice dict from _suggest_match had an `id` key. That helper returns the raw Mongo doc (contains _id: ObjectId), never routed through doc_out(). Fixed by using str(match['_id']). Consider running match through doc_out() inside _suggest_match to keep the contract consistent.",
+    "server.py _suggest_match uses a scoring loop that always prefers score==2 (invoice_number found in description) over score==1 (amount-only match). Note: `if best is None or score > best[0]` — score==2 will replace an existing score==1 correctly. Ties are broken by first-seen (which is fine).",
+    "bank.tsx state model: toggleSelect fires an optimistic setState + fire-and-forget bankUpdateTxn — good. setAll (line 69) reads current `txns` value BEFORE the map update in the closure, so PATCH requests are scheduled against the pre-toggle state; this is fine but subtle — a Promise.all on the mapped array would be equivalent and clearer.",
+    "shift.tsx planning view: activate() uses PATCH /shifts/{id}/activate but doesn't reset selected/schedDate state; when the shift ends and returns to planning, previous UI state (empty selection) is loaded fresh from server. Good.",
+    "shift.tsx activate endpoint doesn't set client_ids on the shift or copy scheduled_for → started_at. Backend simply flips status to active and adds started_at=now_iso(). Draft invoices already exist under shift_id so they remain visible when active_shift() returns them. Correct.",
+    "server.py delete_shift correctly removes ONLY status=='draft' invoices tied to the shift; sent/paid invoices are preserved. Good defensive behaviour for cancel-plan.",
+    "shift.tsx: DateInput 'schedule-date' uses fill('') to clear on web — verified state resets, and start-shift-btn re-appears (the schedDate check is truthy string vs empty string).",
+    "bank.tsx is 240 lines and shift.tsx is 259 lines — well under the 700-line split threshold.",
+    "reports.tsx exposes open-bank-reconcile CTA under bank.reconcileCta — verified navigable and back-btn returns to reports.",
+    "Multi-tenancy: all new endpoints depend on current_org and use _oid_org for scoping. Verified TEST_USER's data is isolated (test only touches his org)."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (fix line 1905: match['id'] → str(match['_id']) in bank_import)",
+    "/app/backend/tests/backend_iteration22_test.py (new pytest file, 16 cases)"
+  ],
+  "success_rate": {"backend": "16/16 (100%)", "frontend": "13/13 scenarios pass (login, end-active-shift, plan-a-shift, activate, cancel-plan, start-now, reports→bank, csv-import, auto-match, select/unselect, reconcile-selected marks invoice paid, ignore/clear, live-BAS update, zero i18n leaks)"},
+  "seed_data_creation": "During testing: created + activated + ended 2 planned shifts (both had drafts auto-removed on cancel/end); created + ended 1 start-now shift for TEST_USER; imported ~5 bank transactions across the run and cleared them all via bank-clear-btn; RECONCILED INV-1008 ($258.39, Mr. Smittty) → status flipped from unpaid → paid. Reports GST Collected moved 2,274.32 → 2,532.71 to reflect INV-1008 being paid this period. If E1 needs a clean baseline they may want to reset INV-1008 back to unpaid; otherwise no lingering artefacts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase D + E fully verified. TEST_USER's INV-1008 is now PAID (was unpaid, ~$258.39, Mr. Smittty) as a real reconcile side-effect. INV-1011 (draft) and INV-1012 (unpaid/sent) from iter 21 are still present but were NOT touched. No active/planned shifts should remain — all created shifts were ended or cancelled during this run. The bank_txns collection is empty for TEST_USER's org. If future iterations retest Phase E, either re-mark an invoice unpaid or use INV-1012 (~$74.32) as the next reconcile target.",
+  "rca_of_issue": "One critical backend crash found and fixed: POST /api/bank/import returned 500 Internal Server Error with KeyError: 'id'. RCA: In server.py bank_import(), the invoice document returned by _suggest_match() is a raw Mongo doc from db.invoices.find() (has ObjectId '_id' + the string invoice_number field, but no 'id' key because it never passes through doc_out()). The line `\"suggested_invoice_id\": match[\"id\"] if match else \"\"` crashed on the credit row. Reproduction: POST /api/bank/import with any CSV whose credit row amount matches an outstanding invoice's total. Mitigation: Changed to `str(match['_id'])` at server.py:1905. Backend restarted; all bank tests pass; the reconcile chain (import → auto-match → mark paid) works end-to-end and BAS/income updates live in Reports."
+}

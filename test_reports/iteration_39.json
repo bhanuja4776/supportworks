@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 39 focused validation of 7 daily-use fixes — all PASS. BACKEND pytest (8/8, /app/backend/tests/backend_iteration39_test.py): (1) POST /api/invoices with {invoice_number:'TEST-XXXXXX'} → 200 and new invoice.invoice_number equals the manual value. (2) POST same number again → 409 with detail 'Invoice number ... is already used'. (3) POST with empty invoice_number → 200 and server auto-assigns an 'INV-XXXX' number. (4) PUT /api/invoices/{id} rename to fresh number → 200 and GET confirms persistence; rename to a different existing invoice's number → 409. (5) Business snapshot merge (Fix #7): PUT /api/settings business_name='Sunset Support Co', GET /api/invoices/{id}/pdf → PDF bytes contain 'Sunset Support Co' (verified by raw byte match). (6) Routine tasks (Fix #3): created a shift-template with routine_tasks=['TEST_iter39_prep_XXX','TEST_iter39_read_XXX'], started shift with template_id → GET /api/tasks?date=today returned BOTH titles each with type=='task' (not 'shift'). (7) Start-shift override: POST /api/shifts/start {client_ids:[cid], started_at:'2026-08-10T09:00:00Z', start_time:'09:00', end_time:'17:00'} → the created shift stored those exact values. (8) End-shift override: PATCH /api/shifts/{id}/end {start_time:'09:15', end_time:'16:45'} → GET /api/shifts?include_ended=true confirmed the ended shift has start_time '09:15' and end_time '16:45'. FRONTEND (mobile viewport 390x844, TEST_USER_EMAIL/admin): (T7) /invoice/preview/<id> renders 'Sunset Support Co' in the header (NO 'Your Business') — verified in DOM + screenshot. (T8) /invoice/new — invoice-number-input present with placeholder 'Auto (e.g. INV-1024)'; typing an existing number (INV-1038) surfaced invoice-number-dupe warning after 500ms; typing a fresh number made it disappear; opening /invoice/new?editId=<id> prefilled the field with the invoice's current number. (T9) Shift tab → selected participant → tapped start-shift-btn → start-shift-sheet opened with editable conf-start-date/conf-start-time/conf-start-end-time and conf-start-cancel/conf-start-confirm. Cancel closed the sheet WITHOUT creating an active shift (verified via /api/shifts/active). Confirm started the shift. (T10) With the active shift, tapped end-shift-btn → end-shift-sheet opened with conf-end-start-time/conf-end-end-time/conf-end-plain/conf-end-to-invoice. Tapping conf-end-to-invoice ended the shift AND navigated to /invoice/<draft_id> (matches the shift's existing draft) with ZERO new invoices created (invs_before == invs_after). (T11) Learn tab code review verified: LEARN_RESOURCES[key=='learn.categoryRights'].url == 'https://www.ndiscommission.gov.au/workers/worker-obligations' at /app/frontend/app/(tabs)/learn.tsx:13 — worker-facing, not participant-facing.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_39.json",
+    "/app/test_reports/pytest/iteration39_results.xml",
+    "/app/backend/tests/backend_iteration39_test.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py create_invoice (L978-1027) cleanly handles the invoice_number override: strip → dupe check → 409 or accept; empty string falls back to _next_invoice_number(). Business snapshot is captured at creation time via _business_snapshot(settings) (L1014).",
+    "server.py edit_invoice (L2748-2782) uniqueness check correctly EXCLUDES the current invoice ({_id: {$ne: existing._id}}) so re-saving with the same number doesn't false-409. Empty string on PUT is treated as 'no change' — preserves the original number.",
+    "server.py _build_invoice_pdf (L1776-1783) uses {**settings, **(inv.business or {})} merge so older invoices with empty biz snapshots inherit current business_name. Correct precedence: snapshot beats settings for populated keys (historical accuracy), settings fills blanks.",
+    "server.py _create_routine_tasks (L2197-2219) correctly sets type='task' and de-dupes per (title,date,client_id,type). Fixes Fix #3 — routine tasks no longer render as shift rows on the planner.",
+    "server.py start_shift (L2223-2253) honours started_at/start_time/end_time overrides ONLY when creating a NEW shift (existing active shift branch does not override — sensible, matches 'confirm-start-sheet' semantics).",
+    "server.py end_shift (L2277-2286) applies start_time/end_time overrides only when explicitly provided (non-empty after .strip()) — passes clean-slate PATCH bodies through without corrupting the shift.",
+    "frontend/app/(tabs)/invoice/new.tsx dupe check (L288-303) is debounced 500ms and correctly excludes the currently-edited invoice's own number (i.id !== editId) so re-saving a draft doesn't self-warn.",
+    "frontend/app/(tabs)/invoice/preview/[id].tsx biz merge (L78) mirrors the backend precedence exactly; falls back to 'Your Business' i18n string only when both snapshot and settings are empty.",
+    "frontend/app/(tabs)/shift.tsx confirm-end sheet (L680-681) shows the linked draft invoice number/client — great UX cue that 'Confirm & Invoice' will land on THAT draft, not a new one.",
+    "frontend/src/api.ts startShift/endShift (L309-316) forward overrides via spread — compact, backward-compatible signature."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration39_test.py"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 pytest)",
+    "frontend": "100% (5/5 focused flows: invoice preview biz merge, editable invoice-number-input with dupe warning + editId prefill, start-shift confirmation sheet cancel+confirm, end-shift-to-invoice one-tap navigation, worker rights URL)"
+  },
+  "seed_data_creation": "TESTs created and cleaned up: several TEST- prefixed invoices (delete-on-teardown), 1 shift-template TEST_iter39_routine_tpl + 2 clients TEST_iter39_ov_ / TEST_iter39_end_ (deleted), 2 tasks TEST_iter39_prep_/TEST_iter39_read_ (deleted). Live frontend session left one draft invoice INV-1039 (attached to a shift that was started and then ended via the confirm-end-to-invoice flow) — leaving it in place for main-agent inspection. settings.business_name is now 'Sunset Support Co' (was set by the merge test; safe to leave as-is or overwrite via Settings screen).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend test file /app/backend/tests/backend_iteration39_test.py covers every server-side change in iteration 39 and is safe to re-run — all fixtures self-clean. Owner org now has 15+ invoices (including INV-1039 draft from the shift-end flow). Business name is 'Sunset Support Co'; if visual tests require the old value, PUT /api/settings first. Confirmed testIDs: invoice-number-input, invoice-number-dupe, shiftclient-<id> (NOT shift-client-<id>), start-shift-btn, end-shift-btn, start-shift-sheet, conf-start-date/time/end-time, conf-start-cancel, conf-start-confirm, end-shift-sheet, conf-end-start-time, conf-end-end-time, conf-end-plain, conf-end-to-invoice, conf-end-cancel, resource-learn.categoryRights. Post-login, the app routes to /onboarding on first sign-in per device — tap the 'Skip' text button to bypass (there is no dedicated testID on the skip button). PUT /api/settings does a $set merge — always GET the current doc first and merge before PUT to preserve unrelated keys.",
+  "rca_of_issue": "N/A — no defects found in iteration 39. All 7 fixes function as designed both at the API and UI layer."
+}

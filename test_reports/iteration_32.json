@@ -1,0 +1,65 @@
+{
+  "summary": "Iteration 32 FULL PASS — retention + save-loop fixes verified end-to-end. BACKEND (backend_iteration32_test.py, 12/12 in ~1.4s): (1) TestShiftsRetention: GET /api/shifts (default) returns only planned/active (asserted for every row); GET /api/shifts?include_ended=true returns the same list PLUS ended shifts (proved by starting + PATCH /shifts/{id}/end on a fresh shift, then confirming its id is absent from the default list but present with status=ended in the include_ended=true list; also confirmed invoice_count + total retention fields are present on the ended shift); include_ended=false is equivalent to omitting the flag (id-set equality). (2) TestRetentionIndexes: source scan confirmed every 'expireAfterSeconds' index in server.py is scoped ONLY to user_sessions or twofa_challenges — no TTL leaked onto invoices/tasks/shifts/receipts/client_notes/expenses. (3) TestListEndpointsRespondOk: GET /api/invoices, /api/receipts, /api/expenses, /api/tasks, /api/reminders, /api/clients/{id}/notes, /api/clients/{id}/overview all respond 200 with list/dict payloads under the raised 20000 cap. (4) TestSourceListCaps: source-code assertion that list_invoices/list_receipts/list_expenses/list_tasks/list_reminders/list_client_notes/client_overview handlers all call to_list(20000). FRONTEND (390x844, owner TEST_USER/admin): (A) Login → consent → onboarding-skip → dashboard-screen. (B) SHIFTS tab (via direct /(tabs)/shift route + tool-account style nav): toggle-shift-history header PRESENT reading 'Past shifts · 3'; tap expands and reveals 3 past-shift-<id> rows each showing DMY date, $amount, and 'N invoices captured' — copy 'Ended shifts stay on record for 7 years (Aus business compliance). Tap to view.' also renders. (C) PLANNER tab: exactly 28 day pills present, testIDs day-2026-07-07 … day-2026-08-03 (= 7 past + today 2026-07-14 + 20 forward). Auto-scroll on mount fires (scrollTo x=7*68=476 on requestAnimationFrame) so today sits at the left edge with past days visible only by back-scrolling; tapping the leftmost past pill day-2026-07-07 caused the day view to load without error, and the tapped pill became active. (D) ACCOUNT tab (direct /account nav): account-retention testID PRESENT beneath account-privacy-policy at y≈1018, rendering the retentionNote copy 'Your records (invoices, receipts, notes, shifts, planner) are retained for 7 years to meet Australian business record-keeping obligations.' with the shield-checkmark icon. (E) INVOICE REGRESSION: /invoice/new opens instantly with Save + Send now + Delete buttons rendered, TTP toggle, plan-management chips (Self/Plan managed/NDIA), and the compliance panel — no loading loop observed (api.ts:147-165 wraps fetch in AbortController with 45s timeout that falls back to enqueue on AbortError, so a stalled network no longer traps the UI). No React Native red screens. Deprecated packages check: no expo-av / expo-barcode-scanner / expo-background-fetch imports.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "backend_matrix": {
+    "TestShiftsRetention.test_default_excludes_ended": "PASS (every returned shift has status in {planned, active})",
+    "TestShiftsRetention.test_include_ended_returns_all": "PASS (freshly ended shift absent from default list, present with status=ended when include_ended=true; invoice_count + total present)",
+    "TestShiftsRetention.test_include_ended_false_matches_default": "PASS (id-set equality)",
+    "TestRetentionIndexes.test_source_has_no_ttl_on_business_collections": "PASS (all expireAfterSeconds lines scoped to user_sessions or twofa_challenges only)",
+    "TestListEndpointsRespondOk.test_list_endpoint_ok[/api/invoices]": "PASS",
+    "TestListEndpointsRespondOk.test_list_endpoint_ok[/api/receipts]": "PASS",
+    "TestListEndpointsRespondOk.test_list_endpoint_ok[/api/expenses]": "PASS",
+    "TestListEndpointsRespondOk.test_list_endpoint_ok[/api/tasks]": "PASS",
+    "TestListEndpointsRespondOk.test_list_endpoint_ok[/api/reminders]": "PASS",
+    "TestListEndpointsRespondOk.test_client_notes_ok": "PASS",
+    "TestListEndpointsRespondOk.test_client_overview_ok": "PASS (dict with invoices/tasks/reminders keys)",
+    "TestSourceListCaps.test_list_handler_caps": "PASS (7 list handlers all use to_list(20000))"
+  },
+  "frontend_matrix": {
+    "owner_login_dashboard": "PASS",
+    "shift_past_shifts_header_present": "PASS (toggle-shift-history reads 'Past shifts · 3')",
+    "shift_past_shifts_expand_shows_rows": "PASS (3 past-shift-<id> rows w/ DMY date + $amount + N invoices captured)",
+    "shift_past_shifts_retention_hint_copy": "PASS ('Ended shifts stay on record for 7 years (Aus business compliance). Tap to view.')",
+    "planner_day_carousel_count": "PASS (28 day-YYYY-MM-DD pills = 7 past + today + 20 forward)",
+    "planner_day_carousel_range": "PASS (day-2026-07-07 … day-2026-08-03; today 2026-07-14 index 7)",
+    "planner_autoscroll_today_visible": "PASS (today at x≈-12 → left edge of viewport; past days scrolled off-screen left)",
+    "planner_tap_past_day_loads": "PASS (day-2026-07-07 tap succeeded, day view rendered)",
+    "account_retention_card_present": "PASS ([data-testid=account-retention] renders retentionNote copy just below account-privacy-policy)",
+    "invoice_new_regression_opens_quickly": "PASS (Save/Send now/Delete buttons visible, no infinite spinner; AbortController 45s wired in api.ts:147-165)"
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_32.json",
+    "/app/test_reports/pytest/iteration32_results.xml",
+    "/app/backend/tests/backend_iteration32_test.py"
+  ],
+  "action_items": [
+    "None blocking — all 8 target behaviours (2 backend query semantics, retention no-TTL guarantee, 7 list caps, past-shifts collapsible, 28-day planner window, retention account card, invoice save regression) verified."
+  ],
+  "critical_code_review_comments": [
+    "server.py:2202-2225 list_shifts correctly branches on include_ended (defaults to {status: in [planned, active]}); still injects invoice_count + total per shift so retention UI has everything it needs. Correct.",
+    "server.py:3005-3006 are the ONLY expireAfterSeconds indexes; on user_sessions.expires_at and twofa_challenges.expires_at. Business collections (invoices/tasks/shifts/receipts/client_notes/expenses) have no TTL. Correct.",
+    "server.py:954/1055/1105/1141/1447-1449/1508/1532 all bumped to to_list(20000). Note: server.py:1384 still uses to_list(1000) for /clients — the request only called out the 7 handlers listed, but if an org ever hits >1000 clients this will silently truncate. Non-blocking for iter-32.",
+    "api.ts:147-165 AbortController(45000) + try/finally clearTimeout + isNetworkError branch → hung fetch is treated as offline and enqueued rather than trapping the UI. Correct defence against 'save invoice stuck loading forever'.",
+    "shift.tsx:53 always requests api.listShifts(true) — good (planner card + past-shifts derived from same fetch); ended shifts are then filtered client-side and sorted by ended_at/scheduled_for desc (line 65-67). Correct.",
+    "shift.tsx:244-279 pastShifts.length>0 gate keeps the section silently absent for orgs with no ended shifts (matches spec).",
+    "planner.tsx:28-39 dayWindow returns 28 days (i from -7 through 20 inclusive); planner.tsx:399-402 auto-scrolls to x=7*68 on mount so today lands at the left edge with past days scrollable left. Meets '28 total, today not the leftmost across the whole list' spec.",
+    "account.tsx:206-209 retention card is placed immediately after account-privacy-policy with shield-checkmark icon + i18n retentionNote copy. Present in all 5 locales (en/th/vi/ar/pa)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration32_test.py (new, 12 tests, ~1.4s)",
+    "/app/test_reports/pytest/iteration32_results.xml (new)",
+    "/app/test_reports/iteration_32.json (this report)"
+  ],
+  "success_rate": {"backend": "12/12 (100%)", "frontend": "10/10 UI checks PASS"},
+  "seed_data_creation": "Backend test started+ended one shift on TEST_USER's org (via POST /shifts/start + PATCH /shifts/{id}/end) to guarantee an ended-shift row for the include_ended=true assertion. That ended shift is intentionally left in the DB (retention test — must not be deleted). It also created (in prior iter-31 leftovers) 1 activity template 'TEST_it31 morning'. No client rows created (reused existing).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter-32 covers only the retention + save-loop deltas. Regression coverage: (a) backend_iteration32_test.py is idempotent-ish (safe to re-run; it will keep creating one new ended shift each run — consider cleaning up in teardown if this becomes noisy). (b) Planner day pills use testID 'day-YYYY-MM-DD' (28 pills, index 7 = today). (c) Past shifts collapsible testID 'toggle-shift-history' + rows 'past-shift-<id>'. (d) account-retention testID lives just below account-privacy-policy. (e) Note server.py:1384 /clients still uses to_list(1000) — not part of iter-32 scope but flagged as a latent 1k cap for very large orgs.",
+  "rca_of_issue": "N/A — both iter-32 fixes work as designed. Save-loop fix = 45s AbortController + enqueue-on-abort in api.ts req(). Retention visibility fix = server.py list_shifts include_ended flag + client-side filter/sort in shift.tsx + past-shifts collapsible section (silent when count=0)."
+}

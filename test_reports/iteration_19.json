@@ -1,0 +1,52 @@
+{
+  "summary": "Frontend-only i18n verification (Task P1) for the 8 newly-translated dynamic screens: assistant, ndis-codes, reports, templates, shift, invoice/[id], invoice/new, client/[id]. Static-key validation: parsed every t('ns.key') literal from the 8 tsx files (194 unique keys total) and confirmed 100% presence in en.json (559 total keys). Dynamic template-string keys also verified: templates.tsx uses t(`templates.${tk}Title|Desc`) with tk in {invoice,report,expense} → all 6 keys exist; client/[id].tsx uses t(`clientDetail.${dk}`) with dk in {docServiceAgreement,docConsent,docPlan,docDocument} → all 4 keys exist. Runtime browser test on public Expo web preview at 390x844, logged in as TEST_USER_EMAIL (has clients, invoices and an active shift). Visited every in-scope screen and ran a regex leak-scan '(assistant|ndisCodes|reports|templates|shift|invoiceDetail|invoiceNew|clientDetail)\\.[a-zA-Z0-9_]+' against document.body.innerText — ZERO unresolved i18n key literals on any screen or modal. Every requested testID resolved (assistant-screen/input/send + shuffle-suggestions; ndis-codes-screen + ndis-search + 18 tag-* chips + 25 add-* buttons; reports-screen + fy-prev/next + export-invoices/receipts; templates-screen + template-invoice/report + generate-report-btn; shift-screen + end-shift-btn + draft-* rows [drew is on an active shift so start-shift-btn/shiftclient-* only render in idle state — verified via code]; invoice-detail-screen + preview-invoice-btn + toggle-paid-btn + share-invoice-btn + edit-invoice-btn + duplicate-invoice-btn; invoice/new: generate-invoice-btn + compliance-panel + add-item-btn + ndis-code-btn-0 + link-client-btn + code-search + client picker modal; client-detail-screen + save-notes-btn + add-reminder-btn + add-doc-btn + save-reminder-btn + save-doc-btn). English keywords verified: 'Code Assistant', 'NDIS Support Codes / Up to date', 'Reports & BAS / Income (paid) / Expenses / Net position / Income vs Expenses / BAS · GST Summary', 'Templates / NDIS Tax Invoice / Progress Report / Expense Summary / PDF / Word', 'Active Shift / Draft Invoices / Shift Receipts / End Shift', 'PAID / BILL TO / Line Items / Subtotal / GST (10%) / Total / Preview / Unpaid / Send', 'New Invoice / Compliance 1/6 — complete the red items / Client / Participant / NDIS Participant Number / Link Client', 'Billed / Paid / Pending / Important Notes / Save Notes / Reminders / Documents / Planned Tasks / Invoices / Add Document / Service Agreement / Consent / Plan / Document / Photo / Upload / Save Document'. Assistant AI end-to-end: typed 'community access' → send → reply 'Community access support depends on day of the week and timing...' rendered with follow-up suggestion chips. No red-screen errors, no runtime crashes, no unresolved key leaks anywhere.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "generic RN-web console warning", "issue": "'Unexpected text node: <whitespace>. A text node cannot be a child of a <View>.' logged once during client-detail navigation. Cosmetic RN-web warning, no visual/functional impact. Likely a stray whitespace text node in a <View> in client/[id].tsx (candidate: whitespace between adjacent <> siblings in the Care Profile / Reminders sections)."},
+      {"component": "shadow* / pointerEvents / Image.style.tintColor deprecations", "issue": "Persistent RN-web deprecation warnings (carried over from iteration 18) still logged on every navigation. Cosmetic only. Reference: theme/global stylesheets."}
+    ]
+  },
+  "i18n_verification": {
+    "screens_tested": ["assistant","ndis-codes","reports","templates","shift","invoice-detail","invoice-new","client-detail"],
+    "locale": "en",
+    "unresolved_key_leaks": 0,
+    "leak_pattern_checked": "(assistant|ndisCodes|reports|templates|shift|invoiceDetail|invoiceNew|clientDetail)\\.[a-zA-Z0-9_]+",
+    "static_keys_referenced": 194,
+    "static_keys_missing": 0,
+    "dynamic_keys_verified": ["templates.invoiceTitle","templates.invoiceDesc","templates.reportTitle","templates.reportDesc","templates.expenseTitle","templates.expenseDesc","clientDetail.docServiceAgreement","clientDetail.docConsent","clientDetail.docPlan","clientDetail.docDocument"],
+    "en_json_total_keys": 559,
+    "screens": {
+      "assistant": {"testid": "assistant-screen", "loaded": true, "ai_reply_received": true, "keywords": ["Code Assistant","Shuffle"]},
+      "ndis-codes": {"testid": "ndis-codes-screen", "loaded": true, "tag_chips": 18, "add_buttons": 25, "keywords": ["NDIS Support Codes","Up to date","Self-Care","Community Access","Weekday","Saturday","Sunday"]},
+      "reports": {"testid": "reports-screen", "loaded": true, "keywords": ["Reports & BAS","FY 2026-2027","Income","Expenses","Net position","BAS · GST Summary","GST collected on sales","Net GST payable","Export Records"]},
+      "templates": {"testid": "templates-screen", "loaded": true, "modal_ok": true, "keywords": ["Templates","NDIS Tax Invoice","Progress Report","Expense Summary","PDF","Word","Participant name","Dictate progress notes"]},
+      "shift": {"testid": "shift-screen", "loaded": true, "state": "active-shift-for-drew", "draft_rows": 1, "keywords": ["Active Shift","Draft Invoices","Shift Receipts","End Shift"]},
+      "invoice-detail": {"testid": "invoice-detail-screen", "loaded": true, "keywords": ["PAID","Edit","Duplicate","BILL TO","Line Items","Subtotal","GST (10%)","Total","Preview","Unpaid","Send"]},
+      "invoice-new": {"testid_root_note": "Root wrapper uses <View> without testID='invoice-new-screen' (title/testIDs inside render correctly)", "loaded": true, "keywords": ["New Invoice","Compliance 1/6","Client / Participant","NDIS Participant Number","Link Client"], "code_picker_modal_ok": true, "client_picker_modal_ok": true},
+      "client-detail": {"testid": "client-detail-screen", "loaded": true, "keywords": ["Sarah Mitchell","Billed","Paid","Pending","Important Notes","Save Notes","Reminders","Documents","Planned Tasks","Invoices"], "reminder_modal_ok": true, "doc_modal_ok": true, "doc_type_chips": ["Service Agreement","Consent","Plan","Document"], "note": "Care Profile section is conditionally rendered (only if condition/severity/medications/behaviours set); Sarah Mitchell has none, so section correctly does not render — this is expected behaviour, not an i18n miss."}
+    }
+  },
+  "test_report_links": ["/app/test_reports/iteration_19.json"],
+  "action_items": [
+    "OPTIONAL: invoice/new.tsx currently has no testID on the outermost <View> — spec references 'invoice-new-screen' indirectly but the requested inner testIDs (generate-invoice-btn, compliance-panel, add-item-btn, ndis-code-btn-0, link-client-btn, code-search) all resolve. If E1 wants a single-selector root anchor for future automation, add testID='invoice-new-screen' to the outer ScrollView/View in /app/frontend/app/(tabs)/invoice/new.tsx.",
+    "OPTIONAL: One console warning during client-detail render — 'Unexpected text node: <whitespace>. A text node cannot be a child of a <View>.' Suggest scanning client/[id].tsx JSX for stray whitespace between <View> siblings (common cause: whitespace inside {...map(...)} or between adjacent conditional fragments). Non-blocking cosmetic.",
+    "OPTIONAL (carried from iteration 18): shadow* / pointerEvents / Image.style.tintColor RN-web deprecation warnings still present. Migrate to boxShadow / style.pointerEvents / props.tintColor when convenient."
+  ],
+  "critical_code_review_comments": [
+    "All 194 static t('ns.key') references across the 8 in-scope files resolve to a real entry in en.json — no missing keys. Dynamic template-string usages (templates tk-suffix, clientDetail doc-type chips) are safe because every constant array value in the source has a matching en.json entry.",
+    "Interpolation keys look correctly wired: clientDetail.left/{{amount}} for budget remaining, clientDetail.deleteMsg/{{name}}, clientDetail.reminderNotifTitle uses {{name}}, invoiceDetail.due/{{date}}, invoiceDetail.issued/{{date}} etc. All present in en.json.",
+    "assistant.tsx: send flow correctly transitions message list -> 'Finding the right code…' -> AI reply, no hard-coded English literals left in the rendered UI.",
+    "shift.tsx: idle-state UI (start-shift-btn + shiftclient-* rows) could not be runtime-verified because drew has an active shift (expected per handoff). Static-key coverage confirms English strings for the idle state are present in en.json.",
+    "invoice/new.tsx (496 lines) and client/[id].tsx (521 lines) are approaching the 700-line threshold in the code-review guidelines — not urgent but worth watching."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped_per_request", "frontend": "100% — all 8 screens render correctly in English, every requested testID resolves in the applicable state, all t() keys resolve, AI assistant end-to-end works, modals open cleanly, no runtime crashes, no i18n leaks."},
+  "seed_data_creation": "None. No data mutated. AI assistant received one prompt ('community access') via existing GPT-4o pipeline.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "P1 i18n rollout for the 8 dynamic screens is fully verified in English with zero missing keys and zero runtime leaks. Test credential: TEST_USER_EMAIL/admin (has clients, paid+draft invoices, and an ACTIVE shift). Direct routes for verification: /assistant, /ndis-codes, /reports, /templates, /shift, /invoice/{id}, /invoice/new, /client/{id}. To detect any regression, grep rendered body for the regex '(assistant|ndisCodes|reports|templates|shift|invoiceDetail|invoiceNew|clientDetail)\\.[a-zA-Z0-9_]+' — any hit means a missing key. Static coverage check: run the Python script that parses t('ns.key') literals from each tsx and diff against flattened en.json — currently 194/194 pass. If E1 rolls out non-English locales for these namespaces, note that dynamic keys (templates.${tk}[Title|Desc], clientDetail.doc${type}) must be replicated in each new locale file."
+}

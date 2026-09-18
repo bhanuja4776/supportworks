@@ -1,0 +1,82 @@
+{
+  "summary": "Phase F verified end-to-end. Backend POST /api/ai/app-help (public, GPT-4o via EMERGENT_LLM_KEY): 7/7 pytest cases pass in /app/backend/tests/backend_iteration23_test.py — endpoint returns 200 with app-specific answers referencing Reports/Bank Reconcile/CSV for reconcile questions, Templates/Shifts/plan for pre-filled invoice questions, and compliance-panel fields (participant, issue date, due date, line item, address) for 'why won't my invoice send?'. Empty messages → 400. No i18n key leaks (help.q*, dashboard.*) in AI answers. Endpoint is confirmed public (no auth header). Frontend (mobile viewport 390x844, logged in as TEST_USER_EMAIL): (1) tips-banner renders below hero with a category label (e.g. 'TAX & ABN', 'MEDICATION') and a real tip sentence — NOT an i18n key. Tapping it advances to a different tip (verified text changed from 'You must register for GST once...' → 'If a medication error occurs...'). Rotation timer + fade animation working. (2) tool-help tile visible in Dashboard tools grid; tapping it navigates to help-screen. (3) help-screen shows intro message and 'Popular questions' with all 6 chips quick-help.q1 … quick-help.q6 rendered with real English text (no key leaks). (4) Tapping quick-help.q1 ('How do I set up pre-filled invoices?') showed 'Looking it up…' then returned an app-specific answer referencing Templates/Shifts/plan shift. (5) Free-form 'why won't my invoice send?' via help-input + help-send returned an answer explicitly listing the 6 compliance fields (participant/client name, NDIS number, billing address OR email, issue date, due date, line item). Matches spec exactly. (6) help-mic renders and toggles without crash (permission prompt handled gracefully; no red screen). Console shows only pre-existing RN-Web deprecations (shadow*, pointerEvents, expo-notifications web token) already reported in iter 22 — no new warnings. Deprecated-package audit: no expo-av / expo-barcode-scanner / expo-background-fetch in package.json. Tips banner is intentionally English-only (i18n deferred per PRD).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN-Web deprecation warnings (pre-existing, carry-over from iter 18-22)", "issue": "'shadow*' style props, props.pointerEvents deprecation warnings still logged. Cosmetic only; migrate to boxShadow / style.pointerEvents when convenient. Not introduced this iteration."},
+      {"component": "Animated useNativeDriver on TipsBanner", "issue": "TipsBanner uses useNativeDriver:true for opacity fade; RN-Web logs 'useNativeDriver is not supported... Falling back to JS-based animation'. Web-only warning — animation still works. Reference: /app/frontend/src/components/TipsBanner.tsx:23,26. Optional: set useNativeDriver:false OR leave as-is since native builds benefit from true."}
+    ]
+  },
+  "phase_f_verification": {
+    "logged_in_as": "TEST_USER_EMAIL",
+    "tips_banner": {
+      "testid_present": "tips-banner",
+      "renders_real_text_not_i18n_key": true,
+      "category_label_shown": "e.g. 'TAX & ABN', 'MEDICATION'",
+      "tap_advances_tip": true,
+      "auto_rotation_interval_ms": 6500,
+      "tips_count_in_source": 52
+    },
+    "tool_help_tile": {
+      "testid_present": "tool-help",
+      "navigates_to_help_screen": true
+    },
+    "help_screen": {
+      "testid_present": "help-screen",
+      "intro_message_shown": true,
+      "quick_chips_visible": ["quick-help.q1","quick-help.q2","quick-help.q3","quick-help.q4","quick-help.q5","quick-help.q6"],
+      "quick_chip_text_is_real_english_not_keys": true,
+      "help_input_present": true,
+      "help_send_present": true,
+      "help_mic_present_and_toggles": true
+    },
+    "ai_backend_answers": {
+      "reconcile_question_refs_reports_bank_csv": true,
+      "prefilled_invoices_refs_templates_or_shifts": true,
+      "invoice_wont_send_refs_compliance_fields": true,
+      "empty_messages_returns_400": true,
+      "public_endpoint_no_auth_required": true,
+      "no_i18n_key_leaks_in_answers": true
+    },
+    "sample_answer_free_form": "If your invoice won't send, check these key compliance items on the invoice screen: 1. Participant/client name. 2. NDIS participant number. 3. A billing address OR email. 4. An issue date. 5. A due date. 6. At least one line item with both a description and a rate."
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_23.json",
+    "/app/test_reports/pytest/iteration23_results.xml",
+    "/app/backend/tests/backend_iteration23_test.py",
+    "/app/test_reports/iteration23_help.png"
+  ],
+  "action_items": [
+    "No blocking issues found. Phase F ships as-is.",
+    "OPTIONAL (carry-over, cosmetic): migrate shadow* → boxShadow and props.pointerEvents → style.pointerEvents across the app to silence RN-Web deprecation warnings.",
+    "OPTIONAL: TipsBanner uses useNativeDriver:true — on web this falls back to JS animation with a warning. Either set useNativeDriver:false or ignore (native benefits from true)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:556 /api/ai/app-help is correctly public (mirrors /api/ai/ndis-assistant) — no auth dependency, uses EMERGENT_LLM_KEY + GPT-4o via emergentintegrations LlmChat. System prompt is grounded on APP_HELP_KNOWLEDGE and includes correct guardrails ('never invent features that aren't in the guide', 'do not give financial/legal/clinical advice').",
+    "server.py:562 history = req.messages[-8:] correctly caps context window to last 8 messages — cheap on tokens.",
+    "server.py:585 error is properly logged with logger.exception; frontend falls back to t('help.error') on any api.appHelp failure (help.tsx:38).",
+    "TipsBanner.tsx: shuffle uses a local useMemo so per-user session shows a stable random order — good UX. Timer cleanup on unmount is correct.",
+    "tips.ts has 52 entries covering all 9 categories (invoicing, payments, ndis, compliance, medication, safety, tax, wellbeing, app) with TIP_STYLE labels — matches PRD.",
+    "help.tsx: QUICK array iterates i18n keys 'help.q1'..'help.q6' and testIDs are `quick-${k}` = 'quick-help.q1' etc — testable, matches spec exactly.",
+    "help.tsx:23 initial assistant intro message correctly uses t('help.intro') — no key leak observed at runtime.",
+    "help.tsx:30-44 send() correctly appends user msg optimistically, calls api.appHelp with full conversation, and handles error via t('help.error'). Auto-scroll on send + reply is implemented.",
+    "help.tsx is 145 lines, TipsBanner.tsx is 77 lines — well under 700-line split threshold."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration23_test.py (new pytest file, 7 cases — all pass)",
+    "/app/test_reports/pytest/iteration23_results.xml (new)",
+    "/app/test_reports/iteration_23.json (this report)",
+    "/app/test_reports/iteration23_help.png (screenshot proof)"
+  ],
+  "success_rate": {"backend": "7/7 (100%)", "frontend": "7/7 scenarios pass (login, tips-banner renders + rotates on tap, tool-help nav, 6 quick chips render, quick-q1 → app-specific answer, free-form 'invoice won't send' → compliance-panel answer, mic toggles no-crash)"},
+  "seed_data_creation": "None. This iteration only READ from backend (POST /api/ai/app-help is stateless — no DB writes). Existing data unchanged: INV-1008 still paid (from iter 22), INV-1011 draft, INV-1012 unpaid. No shifts created/ended. No bank txns.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase F (Tips banner + App Help AI) fully verified. Tips banner is English-only by design (i18n deferred). Backend endpoint POST /api/ai/app-help is PUBLIC (no auth) — do not add auth guards unless spec changes. If a future round adds i18n to tips, translate src/tips.ts and wire TIP_STYLE labels via t(). No lingering test data from this run."
+}

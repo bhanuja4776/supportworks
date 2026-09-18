@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 5 fully validated. Backend (8/8 new tests + regression pass): GET /api/ndis-catalogue returns full catalogue (version=2024-25.1, last_updated=2024-07-01, source_note, items[] with code/name/category/subcategory/unit/rate/icon/tags — 25 items). GET /api/ndis-catalogue/version returns version+last_updated only. GET /api/ndis-codes returns 25-entry list with code/label/rate/unit. GET /api/clients/{id}/recent-codes correctly returns de-duplicated codes from last 3 invoices, most-recent-first. Verified with 3 invoices (inv1: 01_011+0812, inv2: 01_011+04_104, inv3: 07_002) → returns [07_002, 04_104, 01_011, 0812] in that order with description+rate. Also verified: empty client → [], 4-invoice test proves oldest invoice's UNIQUE code (15_054) is correctly excluded (only last 3 considered). Invoice regression: POST /api/invoices computes subtotal=270.24/gst=27.02/total=297.26 for 4×67.56; PUT edit recomputes 357.60/35.76/393.36 for 5×67.56 + 20×0.99. Frontend (390x844): /ndis-codes screen loads offline-first bundled catalogue immediately (loadCatalogue()), version pill shows 'v2024-25.1 · 2024-07-01', search 'sunday' filters correctly (weekday hidden), tag 'Transport' shows 0812 only, Add button on code 01_011 navigates to /invoice/new?presetCode=...&presetRate=... and pre-fills ndis-code-btn-0 with '01_011_0107_1_1' + item-rate-0='67.56'. /invoice/new picker: link-client-btn → pick-client-{id} sets clientId which triggers api.clientRecentCodes → 'RECENT FOR THIS CLIENT' section appears at top of picker modal with the 3 recent codes (04_104, 0812, 01_011) each with description + $67.56/$0.99/$67.56 rates; code-search 'travel' filters to 0812, codetag-Sunday chip filters to sunday code; tapping recent-code-04_104_0125_6_1 applies code + rate to line item. Only harmless RN-web warnings (shadow*/pointerEvents deprecations + expo-notifications web limitation) — no pageerrors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/clients/{id}/recent-codes", "issue": "Uses invoice created_at descending sort AND limit(3) at DB level. If a user later back-dates an invoice with issue_date (edit), created_at ordering will not reflect the true chronological order the user perceives on the invoice list. Consider sorting by issue_date DESC (fallback created_at) for consistency with the invoices list UI."},
+      {"endpoint": "GET /api/clients/{id}/recent-codes", "issue": "Returns items in insertion order of the seen-dict which is 'first occurrence wins' scanning newest→oldest — this correctly gives most-recent-first for de-dup, but the endpoint response omits any 'last_used' timestamp making it hard for the UI to show 'used 3 days ago'. Nice-to-have."},
+      {"endpoint": "GET /api/ndis-codes", "issue": "Now returns all 25 catalogue items instead of the previous 10-item hard-coded NDIS_CODES list (server.py lines 183-194 is DEAD CODE — the NDIS_CODES module-level constant is defined but never used). Recommend removing the unused NDIS_CODES list to avoid confusion."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/ndis-codes", "issues": ["Category section headers (styles.sectionHeader) show right on top of the ListHeaderComponent 'source_note' italic paragraph — spacing looks fine but the source note may be missed as a footnote. Consider a subtle info banner."]},
+      {"screen": "/invoice/new picker modal", "issues": ["When tags are toggled OR search text is present, RECENT FOR THIS CLIENT section is hidden (`recentCodes.length > 0 && !codeQuery && codeTags.length === 0`). This is intentional but users may be confused when they type into search that their recent codes disappeared. Consider keeping the section visible when only search is applied."]}
+    ],
+    "react_native_issues": [
+      {"component": "RN Web (global)", "issue": "'shadow*' style props deprecated warning persists (use boxShadow). Non-blocking. Carried from prior iterations."},
+      {"component": "RN Web (global)", "issue": "'props.pointerEvents is deprecated. Use style.pointerEvents.' Non-blocking. Carried from prior iterations."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration5_test.py",
+    "/app/test_reports/pytest/iteration5_results.xml"
+  ],
+  "action_items": [
+    "(Optional cleanup) Remove the dead NDIS_CODES module-level list in /app/backend/server.py (lines 183-194) — it is no longer referenced now that /api/ndis-codes reads from CATALOGUE_ITEMS.",
+    "(Optional UX) In /invoice/new picker modal, keep 'RECENT FOR THIS CLIENT' visible when only search-text is applied (filter within recents too) so users don't lose the shortcut when they start typing.",
+    "(Optional) Add a 'last_used' ISO date to each recent-code entry so the UI can display 'used 3 days ago' or a subtle chip.",
+    "(Optional) Consider sorting invoices by issue_date DESC in /clients/{id}/recent-codes to keep behaviour consistent with the invoices list UI when users back-date invoices."
+  ],
+  "critical_code_review_comments": [
+    "server.py loads /app/backend/ndis_catalogue.json once at startup into CATALOGUE_ITEMS — good, no disk hit per request. Version endpoint returns only {version,last_updated} which is a light payload perfect for the client-side version-check.",
+    "/api/clients/{id}/recent-codes uses `.sort('created_at',-1).to_list(3)` which returns at most the last 3 invoices for the client, then walks items in that order de-duping by ndis_code with a dict (Python 3.7+ preserves insertion order). Correctly returns [{code, description, rate}] most-recent-first.",
+    "frontend/src/ndis.ts loadCatalogue() implements true offline-first: bundled JSON → AsyncStorage cache (if newer) → backend fetch (if newer). Sets updateAvailable when the online version is newer than the bundled but not yet stored. Clean design.",
+    "frontend/app/ndis-codes.tsx uses SectionList with groupByCategory + FILTER_TAGS chips + query search. Add button correctly router.push('/invoice/new', { presetCode, presetDesc, presetRate }).",
+    "frontend/app/invoice/new.tsx wires useEffect on clientId → api.clientRecentCodes(clientId). Recent codes list only shown when !codeQuery && codeTags.length === 0 to avoid overlapping with active filters. applyCode() reuses the item's own description if already populated, otherwise falls back to code.name — good UX.",
+    "InvoiceCreate PUT preserves shift_id/recurring/recurrence only when 'not update.get(x)' — this can still clobber non-default values (e.g. explicitly setting recurring=False in edit form would fall into `not update.get(...)` and re-inherit the previous True). Carried from iter-4.",
+    "server.py still has bson.ObjectId() calls without try/except across most endpoints — malformed 24-hex IDs still return 500 not 400. Non-blocking, carried from prior iterations."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration5_test.py (new, 8 tests: 4 NDIS catalogue, 3 recent-codes incl. dedup+ordering+only-last-3, 1 invoice POST+GET+PUT regression)"
+  ],
+  "success_rate": {"backend": "100% (8/8 iter-5 pass; prior 74/74 not re-run but no regressions observed on invoice create/edit)", "frontend": "100% (ndis-codes screen + invoice picker modal + recent-codes-for-client flows all verified on 390x844)"},
+  "seed_data_creation": "Iter-5 pytest fixtures create TEST_I5_RecentCodesClient (+ 3 invoices), TEST_I5_EmptyClient, TEST_I5_4InvClient (+ 4 invoices), TEST_I5_InvReg (+ 1 invoice) — all cleaned up in module/function teardown. Frontend playwright seeded TEST_UI5_RecentClient + 2 invoices via page.request, then cleaned up after test — no residual data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run all iter-5 tests: `export $(grep -v '^#' /app/frontend/.env | xargs) && pytest /app/backend/tests/backend_iteration5_test.py -v`. Base URL: EXPO_PUBLIC_BACKEND_URL=https://careworker-dash.preview.emergentagent.com. Key testIDs: ndis-codes-screen, ndis-search, tag-{TagName}, ndis-{code}, add-{code}, link-client-btn, pick-client-{id}, ndis-code-btn-{i}, code-search, codetag-{TagName}, code-{code}, recent-code-{code}. Recent-codes endpoint is scoped to last 3 invoices — do NOT expect codes from the 4th oldest invoice to appear. Dead code: server.py NDIS_CODES list (lines 183-194) is unused; safe to remove but non-blocking.",
+  "rca_of_issue": "N/A — no issues found requiring RCA in iteration 5. All new endpoints and UI flows work as specified in the review request."
+}

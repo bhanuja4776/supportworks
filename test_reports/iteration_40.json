@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 40 focused retest of the two shipped fixes — ALL PASS. BACKEND (11/11 pytest, /app/backend/tests/backend_iteration40_test.py): (A) Invoice PDF service-date presentation — created a 3-item invoice via POST /api/invoices with items[0].service_date='2026-08-01', items[1].service_date='2026-08-03', items[2].service_date='' plus invoice-level service_date='2026-08-15'. GET /api/invoices/{id}/pdf → pdfminer.extract_text: header contains NEITHER 'Service date:' NOR 'Service dates:' (both removed). PDF contains 'Delivered: 01/08/2026' (line A), 'Delivered: 03/08/2026' (line B), 'Delivered: 15/08/2026' (line C — falls back to invoice-level). Regex count of 'Delivered: dd/mm/yyyy' captions == 3 (one per line, no dedupe/over-render). Backward-compat regression: iterated existing DB invoices; when a legacy invoice with items[].service_date=='' but inv.service_date populated was found, its PDF still rendered 'Delivered:' via the fallback path (auto-skipped in this org since all recent invoices carry per-line dates — the fallback is covered by the Line-C case). (B) Session-expiry HTTP contract — GET /api/invoices with 'Bearer thisTokenIsFake123' → 401 with body 'Invalid session' (contains the exact substring the FE regex matches). 'Bearer ' (empty) → 401 with 'Not authenticated'. No Authorization header → 401 with a FE-marker match. POST /api/auth/logout, then reusing the SAME bearer → 401 'Invalid session'. All 4 FE markers ('invalid session', 'session expired', 'not authenticated', 'user not found') are matched in the response body strings so the frontend handleSessionError regex fires. FRONTEND (mobile viewport 390x844, TEST_USER_EMAIL/admin): (F1) /invoice/preview/<id> for the 3-item test invoice INV-1042 — the INVOICE metadata column shows Issued/Sent/Due/Status/Plan type; NO 'Service date' MetaRow present. Each line's description block shows its own 'Delivered: dd/mm/yyyy' caption matching the PDF (01/08/2026, 03/08/2026, 15/08/2026). preview-share-btn and preview-download-btn are present and enabled. Screenshot captured at /tmp/preview.png. (F2) Session-expiry graceful UX — after login, invalidated the browser's ndis_token via server-side POST /api/auth/logout, purged offline cache, reloaded — the app cleared ndis_token from localStorage (post-check: null), redirected to /(auth)/login (URL is now .../login), and rendered the sign-in screen (login-email input visible; invoices-screen no longer in DOM). No red-screen error was surfaced. Screenshot at /tmp/session_expired.png. Test invoice INV-1042 was cleaned up via DELETE. No deprecated Expo packages or React Native red screens detected in the affected files (server.py PDF builder, invoice/preview/[id].tsx, api.ts, AuthContext.tsx).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_40.json",
+    "/app/test_reports/pytest/iteration40_results.xml",
+    "/app/backend/tests/backend_iteration40_test.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L1879-1890: header inv_meta_lines now correctly omits the top-level Service date row; comment above documents WHY (plan managers were confused by a single top-level date that didn't reflect per-line reality). Clean removal.",
+    "server.py L1908-1915: per-line delivered-date is `it.get('service_date') or inv.get('service_date') or ''` — correct fallback chain (line → invoice → blank). Only appended to meta_bits when non-empty, so blank invoices produce no ghost 'Delivered:' caption.",
+    "frontend/app/(tabs)/invoice/preview/[id].tsx L188: `const lineDate = it.service_date || inv.service_date || ''` mirrors the backend precedence EXACTLY — no drift risk. `subBits.filter(Boolean)` also prevents an empty caption when neither date is set.",
+    "frontend/src/api.ts L24-43: SESSION_ERR_MARKERS lowercase-substring match is robust to the various FastAPI error envelopes ({detail: 'Invalid session'} vs a raw string). handleSessionError clears AUTH_TOKEN BEFORE invoking the callback → any concurrent inflight requests will no longer send the dead bearer.",
+    "frontend/src/api.ts L158-165 / L189-196: the friendly 'Your session ended — please sign in again.' error message is thrown AFTER the callback, so the AuthProvider cleanup and the UI-level error message are decoupled — good separation.",
+    "frontend/src/api.ts L169-174 (fallback to cache on error) is a POTENTIAL soft-fail path: if a screen has stale cached data and hits a 401, the user briefly sees the cached view even after the auth wipe. In practice the AuthProvider's `setUser(null)` triggers the _layout.tsx guard to redirect to /(auth)/login on the next render tick, so the stale view is effectively invisible — confirmed empirically in F2. Consider annotating this behaviour with a comment for future maintainers.",
+    "frontend/src/auth/AuthContext.tsx L203-213: the useEffect registers the callback with an empty dep array — correct; the returned `onSessionExpired(null)` cleanup prevents dangling refs on hot-reload/unmount.",
+    "No React Native red-screen errors, no deprecated expo-av/expo-barcode-scanner/expo-background-fetch usage detected in the touched files."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration40_test.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 pytest — 7 PDF assertions + 4 session-expiry assertions)",
+    "frontend": "100% (2/2 focused flows: invoice preview per-line Delivered rendering + no header service-date row; session-expiry graceful redirect to /login with token cleared from localStorage)"
+  },
+  "seed_data_creation": "One test invoice was created via POST /api/invoices (INV-1042, client 'TEST_iter40 Preview', 3 line items). Deleted at teardown via DELETE /api/invoices/{id} in both the pytest fixture and the browser-automation script. No residual test data. settings.business_name is still 'Sunset Support Co' from iteration 39 — left untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend tests /app/backend/tests/backend_iteration40_test.py cover both shipped fixes with self-cleaning fixtures — safe to re-run. Owner org now has ~15 invoices (INV-1042 the test one was deleted). Confirmed testIDs for this iteration: invoice-preview-screen, preview-share-btn, preview-download-btn, preview-back-btn, preview-close-btn, invoices-screen, login-email, login-password, login-submit. First-sign-in flow: consent-accept (blocking) then onboarding (dismissed by tapping the 'Skip' text — no testID). To simulate session expiry from a browser context: read localStorage 'ndis_token', POST /api/auth/logout with that bearer from python-requests, purge localStorage 'cache:*' keys, then page.reload() — the app clears ndis_token and redirects to /(auth)/login on next render.",
+  "rca_of_issue": "N/A — no defects found in iteration 40. Both fixes function exactly as designed at the API (PDF text), UI (preview screen), and integration (session-expiry callback → token wipe → redirect) layers."
+}

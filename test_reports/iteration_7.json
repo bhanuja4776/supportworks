@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 7 fully validated. Backend 6/6 pytest pass (backend_iteration7_test.py). NEW GET /api/dashboard/upcoming?days=14 verified: returns bills-due (kind='due'), renewals (kind='renewal') and cert expiries (kind='cert') within N days with the exact shape {id, kind, title, subtitle, date, days_until, amount, direct_debit}; sorted by date ASC; overdue items included with negative days_until; far-future items (>14d) excluded; 'Direct debit' suffix appears in subtitle when expense.direct_debit=True on the 'due' kind; days=5 horizon correctly excludes an item 10 days out. REGRESSION on /api/dashboard/outstanding verified: (1) $0-owing unpaid invoices excluded, (2) paid invoices excluded, (3) days_since_sent is clamped to >=0 even when issue_date is in the future. Expenses CRUD and Clients CRUD regression passed. Frontend on 390x844 mobile viewport verified: (A) Bottom tab bar (Command/Clients/Scan/Invoices/Planner — exactly 5 labels detected in the tabbar) remains visible on /vault, /credentials, /reports, /templates, /settings, /ndis-codes, /notes, /shift AND on /invoice/new — no leaked/duplicate tabs, no route entries for the href:null screens shown as tabs. (B) Outstanding dropdown: tapping metric-outstanding expands outstanding-dropdown containing a clear 'OUTSTANDING INVOICES' header (computed color=warning amber) and readable rows — INV number/client rendered in #F0F9FF (very bright), meta line '2d since sent' in #BAE6FD, amount in warning amber, dropdown bg #0A1E24. Tapping the seeded row navigates to /invoice/{id} correctly. (C) Upcoming strip: testID upcoming-strip renders when items exist; seeded expense (bill, in 4d, direct debit) and credential (cert, in 10d) both appear as upcoming-{id}:due and upcoming-{id}:cert cards showing icon + when-pill + title + subtitle + amount; tapping a card routes to /vault. Strip is properly hidden when upcoming list is empty (conditional render). No red screens, no pageerrors. Only harmless RN-web deprecation warnings (shadow*, pointerEvents, image tintColor) carried from prior iterations.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/dashboard/upcoming", "issue": "No lower bound — extremely old overdue items (e.g. months in the past) will still be returned. Consider capping at ~-30 days or exposing a min_days parameter so the Command strip does not grow unbounded."},
+      {"endpoint": "GET /api/dashboard/upcoming", "issue": "days query parameter is not validated: negative values yield an empty list (today+negative is in the past — no items match d<=horizon that are also today-or-later? Actually current code only checks d<=horizon so negative days will still return everything up to today-|N|days, potentially confusing). Consider clamping days to >=0 and adding a Query(..., ge=0, le=365)."},
+      {"endpoint": "GET /api/dashboard/upcoming", "issue": "id is built as f\"{_id}:{kind}\" — safe for React keys, but note the same expense document produces two items when both due_date and renewal_date fall in the window. That is intentional but worth documenting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/ (Command) — outstanding dropdown", "issues": ["The 10px 'owing' caption uses colors.muted (#5B7683) on dark surfaceSecondary (#0A1E24) — contrast ratio ~3.4:1, below WCAG AA 4.5:1 for body text at small size. Not the reported bug (main content is fully readable now), but consider bumping the 'owing' label to onSurfaceTertiary (#BAE6FD) or increasing size to 12px for better small-text legibility."]},
+      {"screen": "/ (Command) — upcoming strip", "issues": ["Cards are full-width fixed at 168px — on 390px viewport only ~2 cards visible at once (fine, horizontal scroll works). No visible affordance that the strip is scrollable; consider a subtle fade or arrow, or reveal a partial 3rd card by using width 62-65% of viewport."]}
+    ],
+    "react_native_issues": [
+      {"component": "RN Web (global)", "issue": "'shadow*' style props are deprecated on web. Use 'boxShadow'. Non-blocking, carried from prior iterations."},
+      {"component": "RN Web (global)", "issue": "'props.pointerEvents is deprecated. Use style.pointerEvents.' Non-blocking, carried from prior iterations."},
+      {"component": "expo-image", "issue": "'Image: style.tintColor is deprecated. Please use props.tintColor.' Emitted by react-native-calendars on /vault Calendar segment. Third-party library concern, non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_iteration7_test.py",
+    "/app/test_reports/pytest/iteration7_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Add FastAPI Query(..., ge=0, le=365) validation to /api/dashboard/upcoming so callers cannot pass negative or huge horizons.",
+    "(Optional) Consider clamping overdue items in /api/dashboard/upcoming to a floor (e.g. -30 days) so the Command strip stays bounded as data ages.",
+    "(Optional / a11y) In the Outstanding dropdown, bump the 10px 'owing' caption to colors.onSurfaceTertiary (or 12px) to hit WCAG AA 4.5:1 contrast on the dark surface.",
+    "(Optional / UX) Signal that the Upcoming strip is horizontally scrollable — e.g. a right-edge fade or partial 3rd card peek.",
+    "(Optional cleanup carried from iter-5) server.py:183-194 NDIS_CODES module-level constant is still unused; safe to remove."
+  ],
+  "critical_code_review_comments": [
+    "frontend/app/(tabs)/_layout.tsx — Correct pattern: 5 real tabs registered normally + 10 detail/section screens registered with href:null so they participate in the tabs stack (bottom bar stays mounted) without appearing as tab items. Verified live — bottom bar is present on /vault, /credentials, /reports, /templates, /settings, /ndis-codes, /notes, /shift, /invoice/new and no 'invoice'/'client'/etc leak as tab labels.",
+    "frontend/app/(tabs)/client/_layout.tsx & invoice/_layout.tsx — Minimal Stack wrappers with headerShown:false and surface background; correct for nested detail screens inside the tab group.",
+    "frontend/app/(tabs)/index.tsx — Dashboard now loads api.upcoming(14) in parallel with stats/tasks/outstanding via Promise.all. Upcoming strip is conditionally rendered (upcoming.length > 0) so an empty list hides the section entirely — no crash. Cards derive colour+icon from kind/days_until (cert→info, overdue→error, ≤3d→warning, else brand). Direct-debit cards use 'repeat' icon.",
+    "frontend/app/(tabs)/index.tsx — Outstanding dropdown gained testID='outstanding-dropdown' with a 'OUTSTANDING INVOICES' warning-coloured header and readable row typography (title #F0F9FF, meta #BAE6FD, amount warning amber). Contrast much improved vs. reported bug.",
+    "backend/server.py /api/dashboard/upcoming — Clean implementation: date parsing tolerates ISO strings, iterates expenses (due+renewal) and credentials (expiry), stable sort by date ASC, safe id composition '{oid}:{kind}'. Emits both 'due' and 'renewal' items from the same expense doc when both dates are set — intentional and OK.",
+    "backend/server.py /api/dashboard/outstanding — Correctly filters status:'unpaid', excludes total<=0, clamps days_since_sent via max(0, delta). Regression pytest confirms all three behaviours.",
+    "backend/server.py — /api/dashboard/upcoming does not use pydantic Query() to constrain days; negative/huge values pass through. Non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_iteration7_test.py (new; 6 tests across TestDashboardUpcoming, TestOutstandingRegression, TestExpensesCRUDRegression, TestClientsRegression)",
+    "/app/test_reports/pytest/iteration7_results.xml (new; junit xml)"
+  ],
+  "success_rate": {"backend": "100% (6/6 iter-7)", "frontend": "100% on all iter-7 critical flows verified on 390x844 web preview"},
+  "seed_data_creation": "Backend pytest fixtures created and deleted: TEST_I7_DueSoon (expense), TEST_I7_RenewalSoon (expense), TEST_I7_FarFuture (expense), TEST_I7_Overdue (expense), TEST_I7_Cert & TEST_I7_CertFar (credentials), TEST_I7_Horizon (expense), TEST_I7_ZeroClient / TEST_I7_PaidClient / TEST_I7_RealClient / TEST_I7_FutureSent (invoices), TEST_I7_ExpCRUD (expense), TEST_I7_Client (client). Frontend playwright seeded TEST_UI7_Owing client + invoice + TEST_UI7_Bill expense + TEST_UI7_Cert credential and deleted all of them at the end. No residual test data expected.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run iter-7 backend tests: `pytest /app/backend/tests/backend_iteration7_test.py -v` (loads /app/frontend/.env for EXPO_PUBLIC_BACKEND_URL automatically via python-dotenv). Key testIDs verified: dashboard-screen, metric-outstanding, outstanding-dropdown, outstanding-{invoice_id}, upcoming-strip, upcoming-{expense_id}:due, upcoming-{expense_id}:renewal, upcoming-{credential_id}:cert. Tab-bar-visibility strategy verified: routes /vault, /credentials, /reports, /templates, /settings, /ndis-codes, /notes, /shift, /invoice/new, /client/{id} keep the 5-tab bottom bar via href:null Tabs.Screen entries in app/(tabs)/_layout.tsx. Client and invoice sub-folders each have their own _layout.tsx (Stack) — required by Expo Router for the nested routes to resolve inside the (tabs) group.",
+  "rca_of_issue": "N/A — all three items (tabbar persistence, dropdown readability, upcoming strip) verified working. Prior iteration's reported dropdown readability bug (from user on Expo Go) could not be reproduced on web either — with the new 'OUTSTANDING INVOICES' header and brighter row colors (#F0F9FF title, #BAE6FD meta) the contrast is well above WCAG AA. Only the tiny 10px 'owing' caption at #5B7683 is under AA — minor cosmetic follow-up noted in design_issues."
+}
