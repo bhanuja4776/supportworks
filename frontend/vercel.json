@@ -1,4 +1,5 @@
 {
+  "installCommand": "yarn install --ignore-scripts",
   "buildCommand": "npx expo export -p web",
   "outputDirectory": "dist",
   "rewrites": [
