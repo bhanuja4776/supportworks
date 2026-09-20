@@ -39,8 +39,20 @@ dist
 *credentials.json*
 functions/.secret.local
 functions/lib/
+*firebase-adminsdk*.json
+*service-account*.json
+serviceAccount*.json
 
 # Logs and debug files
+*.log
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+database-debug.log*
+pubsub-debug.log*
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

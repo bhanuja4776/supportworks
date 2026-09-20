@@ -80,7 +80,7 @@ All-in-one business management app for disability support workers in Victoria, A
 - Assistant scales via keyword RETRIEVAL: only relevant candidate codes (regex over name/category/subcategory/tags/description) go into the prompt once catalogue > 120 items; plus a regex fallback that extracts code patterns from the answer so chips always render. 16/16 backend + 5/5 frontend pass.
 
 ### 2026-07-03 (v9) — Lifetime owner + NDIS AI Code Assistant
-- Seeded lifetime owner account TEST_USER_EMAIL / admin (plan 'lifetime', no fees). Membership screen shows "You have lifetime access" (no subscribe buttons) for lifetime users.
+- Seeded lifetime owner account TEST_USER_EMAIL / TEST_PASSWORD (plan 'lifetime', no fees). Membership screen shows "You have lifetime access" (no subscribe buttons) for lifetime users.
 - Confirmed biometric quick-unlock is OPTIONAL: no lock unless the user sets a PIN; PIN is always the fallback, biometric never blocks.
 - NDIS Code Assistant (flagship): POST /api/ai/ndis-assistant, GPT-4o via Emergent LLM key, grounded on the full 25-code catalogue with a strict system prompt (only real codes, JSON {answer, codes}). Backend maps returned code ids to catalogue entries (no hallucinated codes). Frontend chat screen /assistant with suggestion chips + tappable code chips that prefill the invoice builder (presetCode/presetDesc/presetRate). Prominent dashboard banner. 16/16 backend + 7/7 frontend pass.
 

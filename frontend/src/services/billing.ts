@@ -27,7 +27,6 @@ export const PLANS = {
 export const TRIAL_DAYS = 14;
 
 const FREE_LIMITS = { clients: 2, invoices_per_month: 3, ai_per_month: 10 };
-const OWNER_OVERRIDE_EMAIL = "TEST_USER_EMAIL";
 
 function toIso(v: any): string | null {
   if (!v) return null;
@@ -58,20 +57,6 @@ export async function billingMembership(): Promise<Record<string, any>> {
   const ref = doc(db, "users", fbUser.uid);
   const snap = await getDoc(ref);
   const u = snap.exists() ? snap.data() : {};
-
-  // Mirrors the original's test-account owner override: once the trial
-  // lapses, auto-convert to lifetime so this one account is never locked
-  // out. Preserved as-is — it's existing business logic, not invented here.
-  if ((fbUser.email || "").toLowerCase() === OWNER_OVERRIDE_EMAIL) {
-    const m = membershipOut(u);
-    if (!m.is_active) {
-      const lifetimeExp = Timestamp.fromDate(new Date(Date.UTC(2999, 0, 1)));
-      const patch = { plan: "lifetime", membership_status: "active", membership_expires_at: lifetimeExp, auto_renew: false };
-      await setDoc(ref, patch, { merge: true });
-      return membershipOut({ ...u, ...patch });
-    }
-    return m;
-  }
   return membershipOut(u);
 }
 

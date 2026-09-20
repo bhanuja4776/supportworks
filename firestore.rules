@@ -24,8 +24,18 @@ service cloud.firestore {
       return request.resource.data.ownerId == resource.data.ownerId;
     }
 
+    // Entitlement fields are server-only: they are written by the billing
+    // Cloud Functions or, for an owner/lifetime account, by an admin via the
+    // Firebase console / Admin SDK (both bypass rules). A client that could
+    // write its own plan/membership_expires_at could grant itself premium.
+    function touchesEntitlement(keys) {
+      return keys.hasAny(["plan", "membership_expires_at"]);
+    }
     match /users/{uid} {
-      allow read, write: if isOwner(uid);
+      allow read, delete: if isOwner(uid);
+      allow create: if isOwner(uid) && !touchesEntitlement(request.resource.data.keys());
+      allow update: if isOwner(uid)
+        && !touchesEntitlement(request.resource.data.diff(resource.data).affectedKeys());
 
       match /dailyNotes/{date} {
         allow read, write: if isOwner(uid);

@@ -28,7 +28,7 @@
     "OPTIONAL: For automated auth-screen i18n coverage, wire up page.on('dialog', d=>d.accept()) — or expose testID='confirm-logout-btn' on the destructive confirm button in confirmAction so Playwright can click it instead of relying on the native window.confirm. Purely test-tooling; not a user-facing bug.",
     "E1 can self-verify Register/Forgot in Thai: after logging in, switch to Thai, then log out (accept confirm), tap 'Create an account' (go-register) and 'Forgot password?' (go-forgot). ndis_lang persistence is confirmed, so the screens will honour the Thai locale.",
     "E1 can self-verify Planner regression: /planner → tap add-task-fab → fill task-title-input → tap the submit button (likely 'Add to Today'/'Add to Planner') → tap the task's task-toggle-<id>. Celebration confetti should fire.",
-    "E1 can self-verify Invoices toggle-paid regression by first creating a test invoice on TEST_DEMO_EMAIL (empty org), then tapping toggle-paid-<id>. Alternatively, run the smoke on TEST_USER_EMAIL/admin which has seeded data."
+    "E1 can self-verify Invoices toggle-paid regression by first creating a test invoice on TEST_DEMO_EMAIL (empty org), then tapping toggle-paid-<id>. Alternatively, run the smoke on TEST_USER_EMAIL / TEST_PASSWORD which has seeded data."
   ],
   "critical_code_review_comments": [
     "src/i18n/index.ts logout flow: language is persisted via AsyncStorage under STORAGE_KEY 'ndis_lang' and is NOT cleared by AuthContext.logout — correct behaviour, language preference survives sign-out as expected.",
