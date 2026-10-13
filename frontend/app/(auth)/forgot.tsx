@@ -90,6 +90,7 @@ export default function Forgot() {
               <Text style={styles.label}>{t("auth.email")}</Text>
               <TextInput testID="forgot-email" value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor={colors.muted} style={styles.input} keyboardType="email-address" autoCapitalize="none" autoComplete="email" onSubmitEditing={request} />
               {!!msg && <Text style={styles.msg} testID="forgot-success">{msg}</Text>}
+              {!!msg && <Text style={styles.hint} testID="forgot-spam-hint">{t("forgot.spamHint")}</Text>}
               {!!error && <Text style={styles.error} testID="forgot-error">{error}</Text>}
               <Pressable testID="forgot-submit" style={[styles.primaryBtn, busy && { opacity: 0.7 }]} onPress={request} disabled={busy}>
                 {busy ? (
@@ -135,7 +136,8 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.muted, fontSize: 15, marginTop: spacing.xs, marginBottom: spacing.xl },
   label: { color: colors.onSurfaceTertiary, fontSize: 13, fontWeight: weight.bold, marginBottom: spacing.sm },
   input: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, color: colors.onSurface, fontSize: 15, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
-  msg: { color: colors.info, fontSize: 13, marginBottom: spacing.md },
+  msg: { color: colors.info, fontSize: 13, marginBottom: spacing.sm },
+  hint: { color: colors.onSurfaceTertiary, fontSize: 13, lineHeight: 19, marginBottom: spacing.md },
   error: { color: colors.error, fontSize: 13, marginBottom: spacing.sm },
   primaryBtn: { height: 54, borderRadius: radius.md, backgroundColor: colors.brand, alignItems: "center", justifyContent: "center", marginTop: spacing.md },
   primaryText: { color: colors.onBrand, fontWeight: weight.heavy, fontSize: 16 },
