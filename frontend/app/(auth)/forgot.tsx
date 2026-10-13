@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth/AuthContext";
 import { verifyResetCode, confirmReset } from "@/src/firebase/auth";
+import { authErrorMessage } from "@/src/firebase/authErrors";
 import { useTranslation } from "react-i18next";
 import { colors, radius, spacing, weight } from "@/src/theme";
 
@@ -39,7 +40,7 @@ export default function Forgot() {
     setStage("verifying");
     verifyResetCode(linkCode)
       .then((acctEmail) => { setResetEmail(acctEmail); setStage("reset"); })
-      .catch((e) => { setError(readErr(e) || t("forgot.invalidLink")); setStage("request"); });
+      .catch((e) => { setError(authErrorMessage(e, t, "forgot.invalidLink")); setStage("request"); });
   }, [linkCode]);
 
   const request = async () => {
@@ -51,7 +52,7 @@ export default function Forgot() {
       await forgot(trimmed);
       setMsg(t("forgot.sentMsg"));
     } catch (e: any) {
-      setError(isNetworkErr(e) ? t("forgot.networkError") : readErr(e) || t("forgot.sendFailed"));
+      setError(isNetworkErr(e) ? t("forgot.networkError") : authErrorMessage(e, t, "forgot.sendFailed"));
     }
     finally { setBusy(false); }
   };
@@ -65,7 +66,7 @@ export default function Forgot() {
       setMsg(t("forgot.updated"));
       setTimeout(() => router.replace("/(auth)/login"), 900);
     } catch (e: any) {
-      setError(isNetworkErr(e) ? t("forgot.networkError") : readErr(e));
+      setError(isNetworkErr(e) ? t("forgot.networkError") : authErrorMessage(e, t));
     }
     finally { setBusy(false); }
   };
@@ -125,12 +126,6 @@ export default function Forgot() {
 function isNetworkErr(e: any) {
   const m = String(e?.message || e || "");
   return /network|fetch|timeout|abort/i.test(m);
-}
-
-function readErr(e: any) {
-  const code = String(e?.code || "");
-  if (code) return code.replace("auth/", "").replace(/-/g, " ");
-  return String(e?.message || "") || "Something went wrong";
 }
 
 const styles = StyleSheet.create({

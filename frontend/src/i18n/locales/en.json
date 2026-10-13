@@ -244,6 +244,21 @@
     "updating": "Updating…",
     "updated": "Password updated. You can sign in now."
   },
+  "authErrors": {
+    "generic": "Something went wrong. Please try again.",
+    "invalidEmail": "Enter a valid email address.",
+    "missingPassword": "Enter your password.",
+    "badCredentials": "Incorrect email or password.",
+    "emailInUse": "An account with this email already exists. Try signing in instead.",
+    "weakPassword": "Choose a stronger password (at least 6 characters).",
+    "tooManyRequests": "Too many attempts. Please wait a few minutes and try again.",
+    "network": "Couldn't reach the server. Check your connection and try again.",
+    "userDisabled": "This account has been disabled. Please contact support.",
+    "invalidLink": "This reset link is invalid or has expired. Request a new one.",
+    "differentMethod": "An account already exists for this email using a different sign-in method. Sign in with that method instead.",
+    "methodDisabled": "This sign-in method isn't available yet. Please use email and password.",
+    "domainNotAllowed": "Sign-in isn't available from this web address yet. Please contact support."
+  },
   "invoices": {
     "title": "Invoices",
     "subtitle": "{{count}} total · NDIS compliant",

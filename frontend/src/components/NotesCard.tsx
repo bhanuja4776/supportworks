@@ -196,7 +196,10 @@ export function NotesCard() {
 
 const styles = StyleSheet.create({
   card: { marginHorizontal: spacing.lg, marginTop: spacing.xl, backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
-  headRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  // flexWrap so the two action pills + expand button drop to their own row
+  // instead of overflowing past the card's edge on narrow phone widths —
+  // title and actions still share one row wherever they actually fit.
+  headRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: spacing.sm, marginBottom: spacing.md },
   titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   title: { color: colors.onSurface, fontSize: 16, fontWeight: weight.bold },
   actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },

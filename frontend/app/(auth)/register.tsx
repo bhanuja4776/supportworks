@@ -7,6 +7,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth/AuthContext";
+import { authErrorMessage } from "@/src/firebase/authErrors";
 import { useTranslation } from "react-i18next";
 import { colors, radius, spacing, weight } from "@/src/theme";
 
@@ -28,7 +29,7 @@ export default function Register() {
     if (password.length < 6) { setError(t("register.pwTooShort")); return; }
     setBusy(true);
     try { await registerEmail(email.trim(), password, name.trim()); }
-    catch (e: any) { setError(readErr(e)); }
+    catch (e: any) { setError(authErrorMessage(e, t)); }
     finally { setBusy(false); }
   };
 
@@ -39,7 +40,7 @@ export default function Register() {
       const code = String(e?.code || "");
       const cancelled = code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request";
       if (!cancelled) {
-        setError(code === "auth/popup-blocked" ? t("auth.googlePopupBlocked") : readErr(e));
+        setError(authErrorMessage(e, t));
       }
     }
     finally { setGbusy(false); }
@@ -92,11 +93,6 @@ export default function Register() {
       </KeyboardAvoidingView>
     </View>
   );
-}
-
-function readErr(e: any) {
-  const m = String(e?.message || "");
-  try { return JSON.parse(m).detail || m; } catch { return m || "Something went wrong"; }
 }
 
 const styles = StyleSheet.create({

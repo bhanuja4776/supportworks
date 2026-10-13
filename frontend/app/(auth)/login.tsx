@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/src/auth/AuthContext";
+import { authErrorMessage } from "@/src/firebase/authErrors";
 import { useTranslation } from "react-i18next";
 import { LanguagePickerModal } from "@/src/components/LanguagePickerModal";
 import { colors, radius, spacing, weight } from "@/src/theme";
@@ -28,7 +29,7 @@ export default function Login() {
   const submit = async () => {
     setError(""); setBusy(true);
     try { await loginEmail(email.trim(), password); }
-    catch (e: any) { setError(readErr(e)); }
+    catch (e: any) { setError(authErrorMessage(e, t)); }
     finally { setBusy(false); }
   };
 
@@ -41,7 +42,7 @@ export default function Login() {
       const code = String(e?.code || "");
       const cancelled = code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request";
       if (!cancelled) {
-        setError(code === "auth/popup-blocked" ? t("auth.googlePopupBlocked") : readErr(e));
+        setError(authErrorMessage(e, t));
       }
     }
     finally { setGbusy(false); }
@@ -112,11 +113,6 @@ export default function Login() {
       <LanguagePickerModal visible={langOpen} onClose={() => setLangOpen(false)} />
     </View>
   );
-}
-
-function readErr(e: any) {
-  const m = String(e?.message || "");
-  try { return JSON.parse(m).detail || m; } catch { return m || "Something went wrong"; }
 }
 
 const styles = StyleSheet.create({
